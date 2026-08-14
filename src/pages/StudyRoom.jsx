@@ -210,8 +210,8 @@ function StudyRoom({ setPage, sessionId, onBack }) {
         .select(`
           id,
           session_id,
-          user_id,
-          message,
+          sender_id,
+          content,
           created_at
         `)
         .eq("session_id", sessionId)
@@ -220,18 +220,12 @@ function StudyRoom({ setPage, sessionId, onBack }) {
         });
 
       if (messagesError) {
-        console.warn(
-          "Chat is not available yet:",
-          messagesError.message
-        );
-
-        setMessages([]);
-        return;
+        throw messagesError;
       }
 
       setMessages(data || []);
     } catch (err) {
-      console.warn(
+      console.error(
         "Could not load messages:",
         err
       );
@@ -255,6 +249,7 @@ function StudyRoom({ setPage, sessionId, onBack }) {
 
     try {
       setSendingMessage(true);
+      setError("");
 
       const {
         error: messageError,
@@ -262,8 +257,8 @@ function StudyRoom({ setPage, sessionId, onBack }) {
         .from("study_session_messages")
         .insert({
           session_id: sessionId,
-          user_id: currentUser.id,
-          message: text,
+          sender_id: currentUser.id,
+          content: text,
         });
 
       if (messageError) {
@@ -816,7 +811,7 @@ function StudyRoom({ setPage, sessionId, onBack }) {
                 >
                   {messages.map((message) => {
                     const own =
-                      message.user_id ===
+                      message.sender_id ===
                       currentUser?.id;
 
                     return (
@@ -864,7 +859,7 @@ function StudyRoom({ setPage, sessionId, onBack }) {
                                 "3px",
                             }}
                           >
-                            {message.message}
+                            {message.content}
                           </div>
 
                           <div

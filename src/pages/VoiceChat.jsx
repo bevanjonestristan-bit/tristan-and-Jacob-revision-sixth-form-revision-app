@@ -11,6 +11,7 @@ function VoiceChat({ sessionId, currentUser }) {
   const localStreamRef = useRef(null);
   const peersRef = useRef({});
   const remoteAudioRefs = useRef({});
+  const pendingIceRef = useRef({});
 
   useEffect(() => {
     if (!sessionId || !currentUser) {
@@ -36,7 +37,11 @@ function VoiceChat({ sessionId, currentUser }) {
     });
 
     peersRef.current[userId] = peer;
+    pendingIceRef.current[userId] = [];
 
+    /*
+     * Add our microphone to the peer connection.
+     */
     if (localStreamRef.current) {
       localStreamRef.current
         .getTracks()
@@ -48,6 +53,9 @@ function VoiceChat({ sessionId, currentUser }) {
         });
     }
 
+    /*
+     * ICE candidates.
+     */
     peer.onicecandidate = async (event) => {
       if (!event.candidate) {
         return;
@@ -57,21 +65,41 @@ function VoiceChat({ sessionId, currentUser }) {
         return;
       }
 
-      await channelRef.current.send({
-        type: "broadcast",
-        event: "voice-ice",
-        payload: {
-          from: currentUser.id,
-          to: userId,
-          candidate: event.candidate,
-        },
-      });
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "voice-ice",
+          payload: {
+            from: currentUser.id,
+            to: userId,
+            candidate: event.candidate,
+          },
+        });
+      } catch (err) {
+        console.error(
+          "Could not send ICE candidate:",
+          err
+        );
+      }
     };
 
-    peer.ontrack = (event) => {
-      const stream = event.streams?.[0];
+    /*
+     * THIS IS THE IMPORTANT PART:
+     * Receive the other person's microphone.
+     */
+    peer.ontrack = async (event) => {
+      console.log(
+        "Remote audio track received from:",
+        userId
+      );
+
+      const stream =
+        event.streams?.[0];
 
       if (!stream) {
+        console.warn(
+          "Remote track had no stream."
+        );
         return;
       }
 
@@ -102,11 +130,50 @@ function VoiceChat({ sessionId, currentUser }) {
           },
         ];
       });
+
+      /*
+       * Try to start the audio immediately.
+       */
+      setTimeout(() => {
+        const audio =
+          document.getElementById(
+            `remote-audio-${userId}`
+          );
+
+        if (!audio) {
+          return;
+        }
+
+        audio.srcObject = stream;
+        audio.volume = 1;
+        audio.muted = false;
+
+        const playPromise =
+          audio.play();
+
+        if (playPromise) {
+          playPromise.catch((err) => {
+            console.warn(
+              "Browser blocked remote audio autoplay:",
+              err
+            );
+
+            setError(
+              "Your browser blocked voice playback. Click anywhere in the study room and try again."
+            );
+          });
+        }
+      }, 100);
     };
 
     peer.onconnectionstatechange = () => {
       const state =
         peer.connectionState;
+
+      console.log(
+        `Voice connection ${userId}:`,
+        state
+      );
 
       if (
         state === "failed" ||
@@ -117,6 +184,16 @@ function VoiceChat({ sessionId, currentUser }) {
       }
     };
 
+    peer.oniceconnectionstatechange = () => {
+      console.log(
+        `ICE connection ${userId}:`,
+        peer.iceConnectionState
+      );
+    };
+
+    /*
+     * Only the existing user creates the offer.
+     */
     if (initiator) {
       createOffer(userId, peer);
     }
@@ -146,6 +223,11 @@ function VoiceChat({ sessionId, currentUser }) {
           offer: peer.localDescription,
         },
       });
+
+      console.log(
+        "Voice offer sent to:",
+        userId
+      );
     } catch (err) {
       console.error(
         "Could not create voice offer:",
@@ -176,6 +258,32 @@ function VoiceChat({ sessionId, currentUser }) {
         )
       );
 
+      /*
+       * Add any ICE candidates that arrived
+       * before the offer.
+       */
+      const pending =
+        pendingIceRef.current[
+          payload.from
+        ] || [];
+
+      for (const candidate of pending) {
+        try {
+          await peer.addIceCandidate(
+            candidate
+          );
+        } catch (err) {
+          console.warn(
+            "Could not add queued ICE candidate:",
+            err
+          );
+        }
+      }
+
+      pendingIceRef.current[
+        payload.from
+      ] = [];
+
       const answer =
         await peer.createAnswer();
 
@@ -196,6 +304,11 @@ function VoiceChat({ sessionId, currentUser }) {
           answer: peer.localDescription,
         },
       });
+
+      console.log(
+        "Voice answer sent to:",
+        payload.from
+      );
     } catch (err) {
       console.error(
         "Could not handle voice offer:",
@@ -222,6 +335,36 @@ function VoiceChat({ sessionId, currentUser }) {
           payload.answer
         )
       );
+
+      /*
+       * Add queued ICE candidates.
+       */
+      const pending =
+        pendingIceRef.current[
+          payload.from
+        ] || [];
+
+      for (const candidate of pending) {
+        try {
+          await peer.addIceCandidate(
+            candidate
+          );
+        } catch (err) {
+          console.warn(
+            "Could not add queued ICE candidate:",
+            err
+          );
+        }
+      }
+
+      pendingIceRef.current[
+        payload.from
+      ] = [];
+
+      console.log(
+        "Voice answer received from:",
+        payload.from
+      );
     } catch (err) {
       console.error(
         "Could not handle voice answer:",
@@ -235,18 +378,50 @@ function VoiceChat({ sessionId, currentUser }) {
       return;
     }
 
-    const peer =
+    let peer =
       peersRef.current[payload.from];
 
+    /*
+     * If the peer does not exist yet,
+     * create it without starting an offer.
+     */
     if (!peer) {
+      peer = createPeer(
+        payload.from,
+        false
+      );
+    }
+
+    const candidate =
+      new RTCIceCandidate(
+        payload.candidate
+      );
+
+    /*
+     * ICE candidates cannot safely be added
+     * until a remote description exists.
+     */
+    if (!peer.remoteDescription) {
+      if (
+        !pendingIceRef.current[
+          payload.from
+        ]
+      ) {
+        pendingIceRef.current[
+          payload.from
+        ] = [];
+      }
+
+      pendingIceRef.current[
+        payload.from
+      ].push(candidate);
+
       return;
     }
 
     try {
       await peer.addIceCandidate(
-        new RTCIceCandidate(
-          payload.candidate
-        )
+        candidate
       );
     } catch (err) {
       console.error(
@@ -273,15 +448,29 @@ function VoiceChat({ sessionId, currentUser }) {
         );
       }
 
+      /*
+       * Ask for microphone permission.
+       */
       const stream =
         await navigator.mediaDevices.getUserMedia(
           {
-            audio: true,
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
           }
         );
 
       localStreamRef.current = stream;
 
+      console.log(
+        "Microphone access granted."
+      );
+
+      /*
+       * Create Supabase signalling channel.
+       */
       const channel = supabase.channel(
         `study-room-voice-${sessionId}`,
         {
@@ -309,9 +498,13 @@ function VoiceChat({ sessionId, currentUser }) {
               return;
             }
 
+            console.log(
+              "Existing voice user detected:",
+              payload.userId
+            );
+
             /*
-             * The person already in the room
-             * creates the connection.
+             * Existing user creates offer.
              */
             createPeer(
               payload.userId,
@@ -365,13 +558,18 @@ function VoiceChat({ sessionId, currentUser }) {
         )
 
         .subscribe(async (status) => {
+          console.log(
+            "Voice channel status:",
+            status
+          );
+
           if (status !== "SUBSCRIBED") {
             return;
           }
 
           /*
-           * Tell everyone already in the
-           * room that we have joined.
+           * Tell everyone already in the room
+           * that we have joined.
            */
           await channel.send({
             type: "broadcast",
@@ -380,6 +578,10 @@ function VoiceChat({ sessionId, currentUser }) {
               userId: currentUser.id,
             },
           });
+
+          console.log(
+            "Voice join announcement sent."
+          );
         });
 
       setVoiceUsers([
@@ -435,6 +637,10 @@ function VoiceChat({ sessionId, currentUser }) {
       userId
     ];
 
+    delete pendingIceRef.current[
+      userId
+    ];
+
     setVoiceUsers((users) =>
       users.filter(
         (user) => user.id !== userId
@@ -443,7 +649,10 @@ function VoiceChat({ sessionId, currentUser }) {
   }
 
   async function leaveVoice() {
-    if (!joined && !channelRef.current) {
+    if (
+      !joined &&
+      !channelRef.current
+    ) {
       return;
     }
 
@@ -485,6 +694,7 @@ function VoiceChat({ sessionId, currentUser }) {
       });
 
       peersRef.current = {};
+      pendingIceRef.current = {};
 
       if (localStreamRef.current) {
         localStreamRef.current
@@ -532,6 +742,7 @@ function VoiceChat({ sessionId, currentUser }) {
     });
 
     peersRef.current = {};
+    pendingIceRef.current = {};
 
     if (localStreamRef.current) {
       localStreamRef.current
@@ -563,6 +774,33 @@ function VoiceChat({ sessionId, currentUser }) {
     setMuted(nextMuted);
   }
 
+  /*
+   * Try to start all remote audio streams.
+   * This is useful if the browser initially blocks autoplay.
+   */
+  async function enableRemoteAudio() {
+    const audioElements =
+      document.querySelectorAll(
+        "audio[data-remote-voice='true']"
+      );
+
+    for (const audio of audioElements) {
+      try {
+        audio.muted = false;
+        audio.volume = 1;
+
+        await audio.play();
+      } catch (err) {
+        console.warn(
+          "Could not start remote audio:",
+          err
+        );
+      }
+    }
+
+    setError("");
+  }
+
   return (
     <div
       style={{
@@ -571,6 +809,7 @@ function VoiceChat({ sessionId, currentUser }) {
         border: "1px solid #e2e8f0",
         padding: "25px",
       }}
+      onClick={enableRemoteAudio}
     >
       <p className="card-eyebrow">
         VOICE CHAT
@@ -655,6 +894,17 @@ function VoiceChat({ sessionId, currentUser }) {
             <button
               type="button"
               className="primary-card-button"
+              onClick={enableRemoteAudio}
+              style={{
+                flex: 1,
+              }}
+            >
+              🔊 Enable Audio
+            </button>
+
+            <button
+              type="button"
+              className="primary-card-button"
               onClick={leaveVoice}
               style={{
                 flex: 1,
@@ -728,12 +978,33 @@ function VoiceChat({ sessionId, currentUser }) {
         .map((user) => (
           <audio
             key={user.id}
+            id={`remote-audio-${user.id}`}
+            data-remote-voice="true"
             ref={(element) => {
-              if (element && user.stream) {
+              if (
+                element &&
+                user.stream
+              ) {
                 element.srcObject =
                   user.stream;
+
                 element.autoplay = true;
                 element.playsInline = true;
+                element.controls = false;
+                element.muted = false;
+                element.volume = 1;
+
+                /*
+                 * Explicitly attempt playback.
+                 */
+                element
+                  .play()
+                  .catch((err) => {
+                    console.warn(
+                      "Remote audio playback blocked:",
+                      err
+                    );
+                  });
               }
             }}
           />
