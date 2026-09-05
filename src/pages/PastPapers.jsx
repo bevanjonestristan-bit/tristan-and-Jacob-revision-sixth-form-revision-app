@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import PaperWorkspace from "./PaperWorkspace";
@@ -11,13 +10,12 @@ function PastPapers({ setPage }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  /* =========================================================
-     INVITATIONS
-     ========================================================= */
+  // =========================================================
+  // INVITATIONS
+  // =========================================================
 
   const [invitations, setInvitations] = useState([]);
-  const [invitationLoading, setInvitationLoading] =
-    useState(false);
+  const [invitationLoading, setInvitationLoading] = useState(false);
 
   const [acceptingInvitationId, setAcceptingInvitationId] =
     useState(null);
@@ -25,9 +23,9 @@ function PastPapers({ setPage }) {
   const [decliningInvitationId, setDecliningInvitationId] =
     useState(null);
 
-  /* =========================================================
-     LOAD PAST PAPERS
-     ========================================================= */
+  // =========================================================
+  // LOAD PAST PAPERS
+  // =========================================================
 
   async function loadPapers() {
     try {
@@ -74,9 +72,9 @@ function PastPapers({ setPage }) {
     }
   }
 
-  /* =========================================================
-     LOAD INVITATIONS
-     ========================================================= */
+  // =========================================================
+  // LOAD INVITATIONS
+  // =========================================================
 
   async function loadInvitations() {
     try {
@@ -91,8 +89,27 @@ function PastPapers({ setPage }) {
         return;
       }
 
+      console.log(
+        "Checking invitations for:",
+        user.id
+      );
+
       /*
-       * Get invitations sent TO the current user.
+       * IMPORTANT:
+       *
+       * past_paper_invitations DOES NOT HAVE paper_id.
+       *
+       * The relationship is:
+       *
+       * invitation.room_id
+       *       ↓
+       * past_paper_rooms.id
+       *       ↓
+       * past_paper_rooms.paper_id
+       *       ↓
+       * past_papers.id
+       *
+       * Therefore we get paper_id through the room.
        */
 
       const {
@@ -115,6 +132,7 @@ function PastPapers({ setPage }) {
           )
         `)
         .eq("receiver_id", user.id)
+        .eq("status", "pending")
         .order("created_at", {
           ascending: false,
         });
@@ -122,6 +140,11 @@ function PastPapers({ setPage }) {
       if (invitationError) {
         throw invitationError;
       }
+
+      console.log(
+        "Pending invitations found:",
+        invitationData
+      );
 
       if (
         !invitationData ||
@@ -131,9 +154,9 @@ function PastPapers({ setPage }) {
         return;
       }
 
-      /*
-       * Get sender profiles.
-       */
+      // =====================================================
+      // LOAD SENDER PROFILES
+      // =====================================================
 
       const senderIds = [
         ...new Set(
@@ -169,9 +192,9 @@ function PastPapers({ setPage }) {
         }
       }
 
-      /*
-       * Get papers connected to the rooms.
-       */
+      // =====================================================
+      // LOAD INVITED PAPERS
+      // =====================================================
 
       const paperIds = [
         ...new Set(
@@ -200,14 +223,6 @@ function PastPapers({ setPage }) {
           .in("id", paperIds);
 
         if (paperError) {
-          /*
-           * This can happen if RLS only allows the
-           * paper owner to read the paper.
-           *
-           * The invitation itself should still work,
-           * so don't make the Accept button unusable.
-           */
-
           console.warn(
             "Could not load invited papers:",
             paperError.message
@@ -217,10 +232,9 @@ function PastPapers({ setPage }) {
         }
       }
 
-      /*
-       * Combine everything into useful invitation
-       * objects.
-       */
+      // =====================================================
+      // COMBINE DATA
+      // =====================================================
 
       const combinedInvitations =
         invitationData.map(
@@ -251,6 +265,11 @@ function PastPapers({ setPage }) {
           }
         );
 
+      console.log(
+        "Combined invitations:",
+        combinedInvitations
+      );
+
       setInvitations(
         combinedInvitations
       );
@@ -260,33 +279,31 @@ function PastPapers({ setPage }) {
         err
       );
 
-      /*
-       * Don't completely break the Past Papers
-       * page if invitations fail.
-       */
-
       setInvitations([]);
     } finally {
       setInvitationLoading(false);
     }
   }
 
-  /* =========================================================
-     LOAD EVERYTHING
-     ========================================================= */
+  // =========================================================
+  // LOAD EVERYTHING
+  // =========================================================
 
   useEffect(() => {
     loadPapers();
     loadInvitations();
 
     /*
-     * Listen for invitation changes.
+     * Realtime listener.
+     *
+     * Whenever an invitation is INSERTED, UPDATED or DELETED,
+     * refresh the invitation list.
      */
 
     const invitationChannel =
       supabase
         .channel(
-          "past-paper-invitations"
+          "past-paper-invitations-receiver"
         )
         .on(
           "postgres_changes",
@@ -296,21 +313,32 @@ function PastPapers({ setPage }) {
             table:
               "past_paper_invitations",
           },
-          () => {
+          (payload) => {
+            console.log(
+              "Past paper invitation changed:",
+              payload
+            );
+
             loadInvitations();
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(
+            "Invitation realtime status:",
+            status
+          );
+        });
 
     /*
-     * Refresh periodically as a fallback if
-     * realtime isn't enabled.
+     * Fallback refresh.
+     *
+     * This means that even if Realtime misses an event,
+     * the page checks again every 3 seconds.
      */
 
-    const interval =
-      setInterval(() => {
-        loadInvitations();
-      }, 10000);
+    const interval = setInterval(() => {
+      loadInvitations();
+    }, 3000);
 
     return () => {
       clearInterval(interval);
@@ -321,9 +349,9 @@ function PastPapers({ setPage }) {
     };
   }, []);
 
-  /* =========================================================
-     ACCEPT INVITATION
-     ========================================================= */
+  // =========================================================
+  // ACCEPT INVITATION
+  // =========================================================
 
   async function acceptInvitation(
     invitation
@@ -338,6 +366,7 @@ function PastPapers({ setPage }) {
 
     try {
       setError("");
+
       setAcceptingInvitationId(
         invitation.id
       );
@@ -352,11 +381,6 @@ function PastPapers({ setPage }) {
         return;
       }
 
-      /*
-       * Make sure the invitation belongs to
-       * the current user.
-       */
-
       if (
         invitation.receiver_id !==
         user.id
@@ -365,10 +389,6 @@ function PastPapers({ setPage }) {
           "This invitation does not belong to you."
         );
       }
-
-      /*
-       * Make sure the invitation is still pending.
-       */
 
       if (
         invitation.status !==
@@ -379,27 +399,15 @@ function PastPapers({ setPage }) {
         );
       }
 
-      /*
-       * Make sure we have a room.
-       */
-
       if (!invitation.room_id) {
         throw new Error(
           "This invitation is missing its paper room."
         );
       }
 
-      /*
-       * =====================================================
-       * ADD USER TO PAPER ROOM
-       * =====================================================
-       *
-       * This is the important part.
-       *
-       * Accepting an invitation doesn't just change the
-       * invitation status. The recipient also becomes a
-       * member of the shared paper room.
-       */
+      // =====================================================
+      // ADD USER TO ROOM
+      // =====================================================
 
       const {
         error: memberError,
@@ -410,14 +418,14 @@ function PastPapers({ setPage }) {
         .insert({
           room_id:
             invitation.room_id,
-          user_id:
-            user.id,
+          user_id: user.id,
         });
 
       /*
-       * If the member already exists, don't treat that as
-       * a fatal error. This makes accepting the invitation
-       * safe to retry.
+       * If the user is already a member,
+       * Supabase may return a duplicate error.
+       *
+       * That is safe to ignore.
        */
 
       if (
@@ -426,18 +434,14 @@ function PastPapers({ setPage }) {
           memberError.message || ""
         )
           .toLowerCase()
-          .includes(
-            "duplicate"
-          )
+          .includes("duplicate")
       ) {
         throw memberError;
       }
 
-      /*
-       * =====================================================
-       * MARK INVITATION AS ACCEPTED
-       * =====================================================
-       */
+      // =====================================================
+      // MARK INVITATION ACCEPTED
+      // =====================================================
 
       const {
         error: updateError,
@@ -461,87 +465,76 @@ function PastPapers({ setPage }) {
         throw updateError;
       }
 
+      // =====================================================
+      // GET PAPER
+      // =====================================================
+
+      let paperToOpen =
+        invitation.paper;
+
+      if (!paperToOpen) {
+        const {
+          data: room,
+          error: roomError,
+        } = await supabase
+          .from(
+            "past_paper_rooms"
+          )
+          .select(
+            "id, room_code, paper_id, created_by"
+          )
+          .eq(
+            "id",
+            invitation.room_id
+          )
+          .single();
+
+        if (roomError) {
+          throw roomError;
+        }
+
+        if (room?.paper_id) {
+          const {
+            data: paper,
+            error: paperError,
+          } = await supabase
+            .from("past_papers")
+            .select("*")
+            .eq(
+              "id",
+              room.paper_id
+            )
+            .single();
+
+          if (!paperError) {
+            paperToOpen = paper;
+          }
+        }
+      }
+
       /*
-       * Refresh invitations so the accepted invitation
-       * disappears from the pending list.
+       * Remove the accepted invitation
+       * from the visible list immediately.
        */
+
+      setInvitations(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              invitation.id
+          )
+      );
 
       await loadInvitations();
 
-      /*
-       * =====================================================
-       * OPEN THE PAPER
-       * =====================================================
-       *
-       * If the paper metadata was available, open it
-       * immediately.
-       */
+      // =====================================================
+      // OPEN PAPER
+      // =====================================================
 
-      if (invitation.paper) {
+      if (paperToOpen) {
         setSelectedPaper(
-          invitation.paper
-        );
-
-        return;
-      }
-
-      /*
-       * If RLS prevented us from loading the sender's
-       * paper above, fetch the paper again now that the
-       * current user has been added to the room.
-       */
-
-      const {
-        data: room,
-        error: roomError,
-      } = await supabase
-        .from("past_paper_rooms")
-        .select(
-          "id, room_code, paper_id, created_by"
-        )
-        .eq(
-          "id",
-          invitation.room_id
-        )
-        .single();
-
-      if (roomError) {
-        console.warn(
-          "Could not reload paper room:",
-          roomError.message
-        );
-
-        return;
-      }
-
-      if (!room?.paper_id) {
-        return;
-      }
-
-      const {
-        data: paper,
-        error: paperError,
-      } = await supabase
-        .from("past_papers")
-        .select("*")
-        .eq(
-          "id",
-          room.paper_id
-        )
-        .single();
-
-      if (paperError) {
-        console.warn(
-          "Could not load shared paper after accepting:",
-          paperError.message
-        );
-
-        return;
-      }
-
-      if (paper) {
-        setSelectedPaper(
-          paper
+          paperToOpen
         );
       }
     } catch (err) {
@@ -561,9 +554,9 @@ function PastPapers({ setPage }) {
     }
   }
 
-  /* =========================================================
-     DECLINE INVITATION
-     ========================================================= */
+  // =========================================================
+  // DECLINE INVITATION
+  // =========================================================
 
   async function declineInvitation(
     invitation
@@ -578,6 +571,7 @@ function PastPapers({ setPage }) {
 
     try {
       setError("");
+
       setDecliningInvitationId(
         invitation.id
       );
@@ -601,6 +595,10 @@ function PastPapers({ setPage }) {
         );
       }
 
+      // =====================================================
+      // MARK DECLINED
+      // =====================================================
+
       const {
         error: updateError,
       } = await supabase
@@ -623,6 +621,19 @@ function PastPapers({ setPage }) {
         throw updateError;
       }
 
+      /*
+       * Remove it immediately from the UI.
+       */
+
+      setInvitations(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              invitation.id
+          )
+      );
+
       await loadInvitations();
     } catch (err) {
       console.error(
@@ -641,11 +652,13 @@ function PastPapers({ setPage }) {
     }
   }
 
-  /* =========================================================
-     UPLOAD PDF
-     ========================================================= */
+  // =========================================================
+  // UPLOAD PDF
+  // =========================================================
 
-  async function uploadPaper(event) {
+  async function uploadPaper(
+    event
+  ) {
     const file =
       event.target.files?.[0];
 
@@ -654,7 +667,8 @@ function PastPapers({ setPage }) {
     }
 
     if (
-      file.type !== "application/pdf" &&
+      file.type !==
+        "application/pdf" &&
       !file.name
         .toLowerCase()
         .endsWith(".pdf")
@@ -664,6 +678,7 @@ function PastPapers({ setPage }) {
       );
 
       event.target.value = "";
+
       return;
     }
 
@@ -715,7 +730,8 @@ function PastPapers({ setPage }) {
           filePath,
           file,
           {
-            cacheControl: "3600",
+            cacheControl:
+              "3600",
             upsert: false,
             contentType:
               "application/pdf",
@@ -732,8 +748,10 @@ function PastPapers({ setPage }) {
         .from("past_papers")
         .insert({
           user_id: user.id,
-          name: paperName.trim(),
-          file_path: filePath,
+          name:
+            paperName.trim(),
+          file_path:
+            filePath,
         });
 
       if (databaseError) {
@@ -763,11 +781,13 @@ function PastPapers({ setPage }) {
     }
   }
 
-  /* =========================================================
-     DELETE PAPER
-     ========================================================= */
+  // =========================================================
+  // DELETE PAPER
+  // =========================================================
 
-  async function deletePaper(paper) {
+  async function deletePaper(
+    paper
+  ) {
     const confirmed =
       window.confirm(
         `Delete "${paper.name}"?`
@@ -797,7 +817,10 @@ function PastPapers({ setPage }) {
       } = await supabase
         .from("past_papers")
         .delete()
-        .eq("id", paper.id);
+        .eq(
+          "id",
+          paper.id
+        );
 
       if (databaseError) {
         throw databaseError;
@@ -824,25 +847,25 @@ function PastPapers({ setPage }) {
     }
   }
 
-  /* =========================================================
-     OPEN PAPER
-     ========================================================= */
+  // =========================================================
+  // OPEN PAPER
+  // =========================================================
 
   function openPaper(paper) {
     setSelectedPaper(paper);
   }
 
-  /* =========================================================
-     CLOSE WORKSPACE
-     ========================================================= */
+  // =========================================================
+  // CLOSE WORKSPACE
+  // =========================================================
 
   function closeWorkspace() {
     setSelectedPaper(null);
   }
 
-  /* =========================================================
-     PAPER WORKSPACE
-     ========================================================= */
+  // =========================================================
+  // PAPER WORKSPACE
+  // =========================================================
 
   if (selectedPaper) {
     return (
@@ -862,14 +885,13 @@ function PastPapers({ setPage }) {
     );
   }
 
-  /* =========================================================
-     LOADING
-     ========================================================= */
+  // =========================================================
+  // LOADING
+  // =========================================================
 
   if (loading) {
     return (
       <div className="study-hub">
-
         <div className="no-subjects">
 
           <div className="no-subjects-icon">
@@ -881,26 +903,33 @@ function PastPapers({ setPage }) {
           </h2>
 
           <p>
-            Finding your papers and
-            invitations.
+            Finding your papers and invitations.
           </p>
 
         </div>
-
       </div>
     );
   }
 
-  /* =========================================================
-     MAIN PAGE
-     ========================================================= */
+  // =========================================================
+  // PENDING INVITATIONS
+  // =========================================================
+
+  const pendingInvitations =
+    invitations.filter(
+      (invitation) =>
+        invitation.status ===
+        "pending"
+    );
+
+  // =========================================================
+  // MAIN PAGE
+  // =========================================================
 
   return (
     <div className="study-hub">
 
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
+      {/* HEADER */}
 
       <div className="revision-header">
 
@@ -928,16 +957,12 @@ function PastPapers({ setPage }) {
             cursor: uploading
               ? "not-allowed"
               : "pointer",
-
             opacity:
               uploading ? 0.7 : 1,
-
             display:
               "inline-flex",
-
             alignItems:
               "center",
-
             justifyContent:
               "center",
           }}
@@ -950,8 +975,12 @@ function PastPapers({ setPage }) {
           <input
             type="file"
             accept="application/pdf,.pdf"
-            onChange={uploadPaper}
-            disabled={uploading}
+            onChange={
+              uploadPaper
+            }
+            disabled={
+              uploading
+            }
             style={{
               display: "none",
             }}
@@ -961,9 +990,7 @@ function PastPapers({ setPage }) {
 
       </div>
 
-      {/* =====================================================
-          ERROR
-          ===================================================== */}
+      {/* ERROR */}
 
       {error && (
         <div className="revision-information">
@@ -988,18 +1015,15 @@ function PastPapers({ setPage }) {
       )}
 
       {/* =====================================================
-          INVITATIONS
+          PAPER INVITATIONS
           ===================================================== */}
 
-      {invitations.filter(
-        (invitation) =>
-          invitation.status ===
-          "pending"
-      ).length > 0 && (
-
+      {pendingInvitations.length >
+        0 && (
         <div
           style={{
-            marginBottom: "30px",
+            marginBottom:
+              "30px",
           }}
         >
 
@@ -1012,8 +1036,18 @@ function PastPapers({ setPage }) {
               </h3>
 
               <p>
-                People have invited you to
-                work on their past papers.
+                You have{" "}
+                {
+                  pendingInvitations.length
+                }{" "}
+                pending{" "}
+                {
+                  pendingInvitations.length ===
+                  1
+                    ? "invitation"
+                    : "invitations"
+                }{" "}
+                to work on past papers.
               </p>
 
             </div>
@@ -1022,247 +1056,267 @@ function PastPapers({ setPage }) {
 
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
+              display:
+                "flex",
+              flexDirection:
+                "column",
               gap: "12px",
             }}
           >
 
-            {invitations
-              .filter(
-                (invitation) =>
-                  invitation.status ===
-                  "pending"
-              )
-              .map(
-                (invitation) => {
+            {pendingInvitations.map(
+              (invitation) => {
 
-                  const isAccepting =
-                    acceptingInvitationId ===
-                    invitation.id;
+                const isAccepting =
+                  acceptingInvitationId ===
+                  invitation.id;
 
-                  const isDeclining =
-                    decliningInvitationId ===
-                    invitation.id;
+                const isDeclining =
+                  decliningInvitationId ===
+                  invitation.id;
 
-                  return (
+                return (
+                  <div
+                    key={
+                      invitation.id
+                    }
+                    style={{
+                      background:
+                        "white",
+                      border:
+                        "1px solid #ddd6fe",
+                      borderRadius:
+                        "18px",
+                      padding:
+                        "18px 20px",
+                      display:
+                        "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "space-between",
+                      gap: "20px",
+                      flexWrap:
+                        "wrap",
+                      boxShadow:
+                        "0 4px 15px rgba(0,0,0,0.04)",
+                    }}
+                  >
+
+                    {/* INVITER */}
+
                     <div
-                      key={
-                        invitation.id
-                      }
                       style={{
-                        background:
-                          "white",
-                        border:
-                          "1px solid #ddd6fe",
-                        borderRadius:
-                          "18px",
-                        padding:
-                          "18px 20px",
                         display:
                           "flex",
                         alignItems:
                           "center",
-                        justifyContent:
-                          "space-between",
-                        gap:
-                          "20px",
-                        flexWrap:
-                          "wrap",
-                        boxShadow:
-                          "0 4px 15px rgba(0,0,0,0.04)",
+                        gap: "14px",
                       }}
                     >
 
                       <div
                         style={{
+                          width:
+                            "50px",
+                          height:
+                            "50px",
+                          borderRadius:
+                            "50%",
+                          background:
+                            "#ede9fe",
                           display:
                             "flex",
                           alignItems:
                             "center",
-                          gap:
-                            "14px",
+                          justifyContent:
+                            "center",
+                          fontSize:
+                            "24px",
+                          flexShrink: 0,
                         }}
                       >
+                        👤
+                      </div>
+
+                      <div>
+
+                        <strong
+                          style={{
+                            fontSize:
+                              "16px",
+                          }}
+                        >
+                          {invitation
+                            .sender
+                            ?.full_name ||
+                            "A student"}
+                        </strong>
 
                         <div
                           style={{
-                            width:
-                              "50px",
-                            height:
-                              "50px",
-                            borderRadius:
-                              "50%",
-                            background:
-                              "#ede9fe",
-                            display:
-                              "flex",
-                            alignItems:
-                              "center",
-                            justifyContent:
-                              "center",
+                            marginTop:
+                              "4px",
+                            color:
+                              "#64748b",
                             fontSize:
-                              "24px",
+                              "14px",
                           }}
                         >
-                          👤
-                        </div>
 
-                        <div>
+                          invited you to
+                          work on{" "}
 
-                          <strong
-                            style={{
-                              fontSize:
-                                "16px",
-                            }}
-                          >
+                          <strong>
                             {invitation
-                              .sender
-                              ?.full_name ||
-                              "A student"}
+                              .paper
+                              ?.name ||
+                              "a past paper"}
                           </strong>
 
+                        </div>
+
+                        {invitation.created_at && (
                           <div
                             style={{
                               marginTop:
                                 "4px",
                               color:
-                                "#64748b",
+                                "#94a3b8",
                               fontSize:
-                                "14px",
+                                "12px",
                             }}
                           >
-                            invited you to work
-                            on{" "}
-
-                            <strong>
-                              {invitation
-                                .paper
-                                ?.name ||
-                                "a past paper"}
-                            </strong>
+                            Sent{" "}
+                            {new Date(
+                              invitation.created_at
+                            ).toLocaleString()}
                           </div>
-
-                          {invitation
-                            .created_at && (
-                            <div
-                              style={{
-                                marginTop:
-                                  "4px",
-                                color:
-                                  "#94a3b8",
-                                fontSize:
-                                  "12px",
-                              }}
-                            >
-                              Sent{" "}
-                              {new Date(
-                                invitation.created_at
-                              ).toLocaleString()}
-                            </div>
-                          )}
-
-                        </div>
-
-                      </div>
-
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          gap:
-                            "10px",
-                          flexWrap:
-                            "wrap",
-                        }}
-                      >
-
-                        {/* ACCEPT */}
-
-                        <button
-                          type="button"
-                          className="primary-card-button"
-                          onClick={() =>
-                            acceptInvitation(
-                              invitation
-                            )
-                          }
-                          disabled={
-                            isAccepting ||
-                            isDeclining
-                          }
-                          style={{
-                            cursor:
-                              isAccepting ||
-                              isDeclining
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity:
-                              isAccepting ||
-                              isDeclining
-                                ? 0.7
-                                : 1,
-                          }}
-                        >
-                          {isAccepting
-                            ? "Accepting..."
-                            : "✅ Accept"}
-                        </button>
-
-                        {/* DECLINE */}
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            declineInvitation(
-                              invitation
-                            )
-                          }
-                          disabled={
-                            isAccepting ||
-                            isDeclining
-                          }
-                          style={{
-                            border:
-                              "1px solid #fecaca",
-                            borderRadius:
-                              "10px",
-                            padding:
-                              "10px 15px",
-                            background:
-                              "#fff1f2",
-                            color:
-                              "#991b1b",
-                            fontWeight:
-                              "600",
-                            cursor:
-                              isAccepting ||
-                              isDeclining
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity:
-                              isAccepting ||
-                              isDeclining
-                                ? 0.7
-                                : 1,
-                          }}
-                        >
-                          {isDeclining
-                            ? "Declining..."
-                            : "❌ Decline"}
-                        </button>
+                        )}
 
                       </div>
 
                     </div>
-                  );
-                }
-              )}
+
+                    {/* BUTTONS */}
+
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        gap: "10px",
+                        flexWrap:
+                          "wrap",
+                      }}
+                    >
+
+                      <button
+                        type="button"
+                        className="primary-card-button"
+                        onClick={() =>
+                          acceptInvitation(
+                            invitation
+                          )
+                        }
+                        disabled={
+                          isAccepting ||
+                          isDeclining
+                        }
+                        style={{
+                          cursor:
+                            isAccepting ||
+                            isDeclining
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            isAccepting ||
+                            isDeclining
+                              ? 0.7
+                              : 1,
+                        }}
+                      >
+                        {isAccepting
+                          ? "Accepting..."
+                          : "✅ Accept"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          declineInvitation(
+                            invitation
+                          )
+                        }
+                        disabled={
+                          isAccepting ||
+                          isDeclining
+                        }
+                        style={{
+                          border:
+                            "1px solid #fecaca",
+                          borderRadius:
+                            "10px",
+                          padding:
+                            "10px 15px",
+                          background:
+                            "#fff1f2",
+                          color:
+                            "#991b1b",
+                          fontWeight:
+                            "600",
+                          cursor:
+                            isAccepting ||
+                            isDeclining
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            isAccepting ||
+                            isDeclining
+                              ? 0.7
+                              : 1,
+                        }}
+                      >
+                        {isDeclining
+                          ? "Declining..."
+                          : "❌ Decline"}
+                      </button>
+
+                    </div>
+
+                  </div>
+                );
+              }
+            )}
 
           </div>
 
         </div>
       )}
+
+      {/* INVITATION LOADING */}
+
+      {invitationLoading &&
+        pendingInvitations.length ===
+          0 && (
+          <div
+            style={{
+              marginBottom:
+                "25px",
+              padding:
+                "15px",
+              borderRadius:
+                "12px",
+              background:
+                "#f8fafc",
+              color:
+                "#64748b",
+              fontSize:
+                "14px",
+            }}
+          >
+            Checking for paper invitations...
+          </div>
+        )}
 
       {/* =====================================================
           NO PAPERS
@@ -1293,18 +1347,16 @@ function PastPapers({ setPage }) {
                 uploading
                   ? "not-allowed"
                   : "pointer",
-
               display:
                 "inline-flex",
-
               alignItems:
                 "center",
-
               justifyContent:
                 "center",
-
               opacity:
-                uploading ? 0.7 : 1,
+                uploading
+                  ? 0.7
+                  : 1,
             }}
           >
 
@@ -1315,8 +1367,12 @@ function PastPapers({ setPage }) {
             <input
               type="file"
               accept="application/pdf,.pdf"
-              onChange={uploadPaper}
-              disabled={uploading}
+              onChange={
+                uploadPaper
+              }
+              disabled={
+                uploading
+              }
               style={{
                 display: "none",
               }}
@@ -1330,9 +1386,7 @@ function PastPapers({ setPage }) {
 
         <>
 
-          {/* =================================================
-              SECTION HEADING
-              ================================================= */}
+          {/* PAPERS HEADING */}
 
           <div className="revision-section-heading">
 
@@ -1344,18 +1398,19 @@ function PastPapers({ setPage }) {
 
               <p>
                 {papers.length}{" "}
-                {papers.length === 1
-                  ? "paper"
-                  : "papers"}
+                {
+                  papers.length ===
+                  1
+                    ? "paper"
+                    : "papers"
+                }
               </p>
 
             </div>
 
           </div>
 
-          {/* =================================================
-              PAPER GRID
-              ================================================= */}
+          {/* PAPER GRID */}
 
           <div className="revision-subject-grid">
 
@@ -1363,7 +1418,9 @@ function PastPapers({ setPage }) {
               (paper) => (
 
                 <div
-                  key={paper.id}
+                  key={
+                    paper.id
+                  }
                   className="revision-subject-card"
                 >
 
@@ -1393,10 +1450,8 @@ function PastPapers({ setPage }) {
                       style={{
                         marginTop:
                           "8px",
-
                         fontSize:
                           "13px",
-
                         opacity:
                           0.7,
                       }}
@@ -1415,13 +1470,9 @@ function PastPapers({ setPage }) {
                     style={{
                       display:
                         "flex",
-
                       flexDirection:
                         "column",
-
-                      gap:
-                        "10px",
-
+                      gap: "10px",
                       marginTop:
                         "20px",
                     }}

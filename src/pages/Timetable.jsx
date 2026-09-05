@@ -10,72 +10,22 @@ const days = [
   "Friday",
 ];
 
-const periods = [
-  {
-    name: "Registration",
-    time: "8:30 – 8:40",
-    start: "08:30",
-    end: "08:40",
-  },
-  {
-    name: "Period 1",
-    time: "8:45 – 9:55",
-    start: "08:45",
-    end: "09:55",
-  },
-  {
-    name: "Break",
-    time: "9:55 – 10:15",
-    start: "09:55",
-    end: "10:15",
-    break: true,
-  },
-  {
-    name: "Period 2",
-    time: "10:15 – 11:25",
-    start: "10:15",
-    end: "11:25",
-  },
-  {
-    name: "Break",
-    time: "11:25 – 11:45",
-    start: "11:25",
-    end: "11:45",
-    break: true,
-  },
-  {
-    name: "Period 3",
-    time: "11:45 – 12:55",
-    start: "11:45",
-    end: "12:55",
-  },
-  {
-    name: "Lunch",
-    time: "12:55 – 1:55",
-    start: "12:55",
-    end: "13:55",
-    break: true,
-  },
-  {
-    name: "Period 4",
-    time: "1:55 – 3:05",
-    start: "13:55",
-    end: "15:05",
-  },
-  {
-    name: "Period 5",
-    time: "3:05 – 4:15",
-    start: "15:05",
-    end: "16:15",
-  },
-];
+/*
+  Day numbers are stored as:
+  Monday = 1
+  Tuesday = 2
+  Wednesday = 3
+  Thursday = 4
+  Friday = 5
 
+  This matches the Friends timetable viewer.
+*/
 const dayIndexes = {
-  Monday: 0,
-  Tuesday: 1,
-  Wednesday: 2,
-  Thursday: 3,
-  Friday: 4,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
 };
 
 const dayShortNames = {
@@ -85,6 +35,140 @@ const dayShortNames = {
   Thursday: "THU",
   Friday: "FRI",
 };
+
+/*
+  The school day is split into the individual lesson slots shown
+  on the school timetable.
+
+  Breaks and lunch are fixed display rows and are NOT stored in
+  Supabase.
+
+  Form and Extra-curricular ARE editable so each student can enter
+  their own activity/location.
+*/
+const periods = [
+  {
+    name: "Form",
+    label: "Form",
+    time: "8:30 – 8:45",
+    start: "08:30",
+    end: "08:45",
+  },
+  {
+    name: "L1",
+    label: "L1",
+    time: "8:45 – 9:20",
+    start: "08:45",
+    end: "09:20",
+  },
+  {
+    name: "L2",
+    label: "L2",
+    time: "9:20 – 9:55",
+    start: "09:20",
+    end: "09:55",
+  },
+  {
+    name: "Break 1",
+    label: "Break",
+    time: "9:55 – 10:15",
+    start: "09:55",
+    end: "10:15",
+    break: true,
+  },
+  {
+    name: "L3",
+    label: "L3",
+    time: "10:15 – 10:50",
+    start: "10:15",
+    end: "10:50",
+  },
+  {
+    name: "L4",
+    label: "L4",
+    time: "10:50 – 11:25",
+    start: "10:50",
+    end: "11:25",
+  },
+  {
+    name: "Break 2",
+    label: "Break",
+    time: "11:25 – 11:45",
+    start: "11:25",
+    end: "11:45",
+    break: true,
+  },
+  {
+    name: "L5",
+    label: "L5",
+    time: "11:45 – 12:20",
+    start: "11:45",
+    end: "12:20",
+  },
+  {
+    name: "L6",
+    label: "L6",
+    time: "12:20 – 12:55",
+    start: "12:20",
+    end: "12:55",
+  },
+  {
+    name: "Lunch",
+    label: "Lunch",
+    time: "12:55 – 13:55",
+    start: "12:55",
+    end: "13:55",
+    break: true,
+    lunch: true,
+  },
+  {
+    name: "L7",
+    label: "L7",
+    time: "13:55 – 14:30",
+    start: "13:55",
+    end: "14:30",
+  },
+  {
+    name: "L8",
+    label: "L8",
+    time: "14:30 – 15:05",
+    start: "14:30",
+    end: "15:05",
+  },
+  {
+    name: "L9",
+    label: "L9",
+    time: "15:05 – 15:40",
+    start: "15:05",
+    end: "15:40",
+  },
+  {
+    name: "L10",
+    label: "L10",
+    time: "15:40 – 16:15",
+    start: "15:40",
+    end: "16:15",
+  },
+  {
+    name: "Break 3",
+    label: "Break",
+    time: "16:15 – 16:30",
+    start: "16:15",
+    end: "16:30",
+    break: true,
+  },
+  {
+    name: "Extra-curricular",
+    label: "Extra-curricular",
+    time: "16:30 – 17:25",
+    start: "16:30",
+    end: "17:25",
+  },
+];
+
+const editablePeriods = periods.filter(
+  (period) => !period.break
+);
 
 function Timetable() {
   const [week, setWeek] = useState(1);
@@ -101,7 +185,7 @@ function Timetable() {
     useState("Monday");
 
   const [selectedPeriod, setSelectedPeriod] =
-    useState("Period 1");
+    useState("L1");
 
   const [subject, setSubject] = useState("");
   const [teacher, setTeacher] = useState("");
@@ -160,8 +244,12 @@ function Timetable() {
         `)
         .eq("user_id", user.id)
         .eq("week", week)
-        .order("day")
-        .order("start_time");
+        .order("day", {
+          ascending: true,
+        })
+        .order("start_time", {
+          ascending: true,
+        });
 
       if (timetableError) {
         throw timetableError;
@@ -199,16 +287,15 @@ function Timetable() {
     }
 
     const [hours, minutes] =
-      time.split(":").map(Number);
+      String(time)
+        .split(":")
+        .slice(0, 2)
+        .map(Number);
 
     return hours * 60 + minutes;
   }
 
   function isCurrentPeriod(period) {
-    if (period.break) {
-      return false;
-    }
-
     const currentDay =
       currentTime.getDay();
 
@@ -247,52 +334,75 @@ function Timetable() {
     }
 
     return (
-      dayIndexes[day] ===
-      currentDay - 1
+      dayIndexes[day] === currentDay
     );
   }
 
-  function getRoutineLabel(
-    periodName,
-    day
-  ) {
-    if (
-      periodName === "Registration"
-    ) {
-      if (day === "Monday") {
-        return "Chapel / Pastoral";
-      }
+  function getEntryType(entry) {
+    const text =
+      String(entry?.subject || "")
+        .trim()
+        .toLowerCase();
 
-      if (
-        day === "Tuesday" ||
-        day === "Wednesday" ||
-        day === "Thursday"
-      ) {
-        return "Tutor Period";
-      }
+    if (text.includes("game")) {
+      return "games";
+    }
 
-      if (day === "Friday") {
-        return "Head's Assembly";
-      }
+    if (text.includes("enrichment")) {
+      return "enrichment";
     }
 
     if (
-      periodName === "Period 4" ||
-      periodName === "Period 5"
+      text.includes("form") ||
+      text.includes("tutor") ||
+      text.includes("chapel") ||
+      text.includes("assembly") ||
+      text.includes("pastoral")
     ) {
-      if (
-        day === "Tuesday" ||
-        day === "Thursday"
-      ) {
-        return "Games";
-      }
-
-      if (day === "Wednesday") {
-        return "Enrichment";
-      }
+      return "routine";
     }
 
-    return null;
+    return "";
+  }
+
+  function getEntryIcon(entry) {
+    const type = getEntryType(entry);
+
+    if (type === "games") {
+      return "🏃";
+    }
+
+    if (type === "enrichment") {
+      return "✨";
+    }
+
+    if (type === "routine") {
+      return "🎓";
+    }
+
+    if (
+      String(entry?.period_name || "") ===
+      "Extra-curricular"
+    ) {
+      return "🌟";
+    }
+
+    return "";
+  }
+
+  function getDefaultSubject(periodName) {
+    if (periodName === "Form") {
+      return "Form";
+    }
+
+    if (
+      periodName ===
+      "Extra-curricular"
+    ) {
+      return "";
+    }
+
+    return "";
   }
 
   function openAddModal(
@@ -302,7 +412,9 @@ function Timetable() {
     setEditingEntry(null);
     setSelectedDay(day);
     setSelectedPeriod(periodName);
-    setSubject("");
+    setSubject(
+      getDefaultSubject(periodName)
+    );
     setTeacher("");
     setRoom("");
     setError("");
@@ -333,6 +445,10 @@ function Timetable() {
 
     setShowModal(false);
     setEditingEntry(null);
+  }
+
+  function quickFill(value) {
+    setSubject(value);
   }
 
   async function saveLesson(event) {
@@ -372,7 +488,7 @@ function Timetable() {
 
       if (!trimmedSubject) {
         throw new Error(
-          "Please enter a subject."
+          "Please enter a subject or activity."
         );
       }
 
@@ -381,9 +497,9 @@ function Timetable() {
           item.name === selectedPeriod
       );
 
-      if (!period) {
+      if (!period || period.break) {
         throw new Error(
-          "Invalid period."
+          "Please choose an editable timetable slot."
         );
       }
 
@@ -395,6 +511,27 @@ function Timetable() {
       ) {
         throw new Error(
           "Invalid day."
+        );
+      }
+
+      /*
+        Only one saved entry is allowed in each
+        Week + Day + Slot for the current user.
+
+        If a duplicate already exists, give a useful message
+        rather than creating overlapping lessons.
+      */
+      const existingEntry = entries.find(
+        (entry) =>
+          Number(entry.day) === dayIndex &&
+          entry.period_name ===
+            selectedPeriod &&
+          entry.id !== editingEntry?.id
+      );
+
+      if (existingEntry) {
+        throw new Error(
+          `${selectedDay} ${selectedPeriod} already has an entry. Click that slot to edit it.`
         );
       }
 
@@ -452,13 +589,13 @@ function Timetable() {
       await loadTimetable();
     } catch (err) {
       console.error(
-        "Could not save lesson:",
+        "Could not save timetable entry:",
         err
       );
 
       setError(
         err?.message ||
-          "Could not save the lesson."
+          "Could not save the timetable entry."
       );
     } finally {
       setSaving(false);
@@ -468,7 +605,7 @@ function Timetable() {
   async function deleteLesson(entry) {
     const confirmed =
       window.confirm(
-        "Delete this lesson?"
+        `Delete "${entry.subject}" from your timetable?`
       );
 
     if (!confirmed) {
@@ -514,13 +651,13 @@ function Timetable() {
       await loadTimetable();
     } catch (err) {
       console.error(
-        "Could not delete lesson:",
+        "Could not delete timetable entry:",
         err
       );
 
       setError(
         err?.message ||
-          "Could not delete the lesson."
+          "Could not delete the timetable entry."
       );
     }
   }
@@ -571,9 +708,10 @@ function Timetable() {
           </div>
 
           <p className="timetable-subtitle">
-            Plan your Sixth Form week,
-            keep your lessons organised
-            and see what's happening next.
+            Add your own lessons, Games,
+            Enrichment, Form and after-school
+            activities. Your accepted friends
+            can see the timetable you build.
           </p>
 
         </div>
@@ -646,13 +784,13 @@ function Timetable() {
 
         <div>
           <strong>
-            Build your timetable
+            Build your own timetable
           </strong>
 
           <p>
-            Click an empty lesson slot to
-            add a lesson. Click an existing
-            lesson to edit it.
+            Click any empty white slot to add
+            what you have there. Breaks and
+            lunch are already fixed for you.
           </p>
         </div>
 
@@ -667,8 +805,8 @@ function Timetable() {
 
           <small>
             {entries.length === 1
-              ? "lesson"
-              : "lessons"}
+              ? "entry"
+              : "entries"}
           </small>
         </div>
 
@@ -749,7 +887,8 @@ function Timetable() {
               >
 
                 <strong>
-                  {period.name}
+                  {period.label ||
+                    period.name}
                 </strong>
 
                 <span>
@@ -774,20 +913,9 @@ function Timetable() {
                   ) &&
                   isCurrentDay(day);
 
-                const routine =
-                  getRoutineLabel(
-                    period.name,
-                    day
-                  );
-
                 const special =
-                  routine === "Games"
-                    ? "games"
-                    : routine ===
-                      "Enrichment"
-                    ? "enrichment"
-                    : routine
-                    ? "routine"
+                  entry
+                    ? getEntryType(entry)
                     : "";
 
                 return (
@@ -839,32 +967,38 @@ function Timetable() {
                     }}
                   >
 
-                    {/* BREAK */}
+                    {/* BREAK / LUNCH */}
 
                     {period.break ? (
 
                       <div className="break-content">
 
                         <span className="break-icon">
-                          {period.name ===
-                          "Lunch"
+                          {period.lunch
                             ? "🍴"
                             : "☕"}
                         </span>
 
                         <span>
-                          {period.name}
+                          {period.label ||
+                            period.name}
                         </span>
 
                       </div>
 
                     ) : entry ? (
 
-                      /* LESSON */
+                      /* SAVED ENTRY */
 
                       <div className="lesson-content">
 
                         <div className="lesson-subject">
+                          {getEntryIcon(entry) && (
+                            <span>
+                              {getEntryIcon(entry)}{" "}
+                            </span>
+                          )}
+
                           {entry.subject}
                         </div>
 
@@ -900,31 +1034,9 @@ function Timetable() {
 
                       </div>
 
-                    ) : routine ? (
-
-                      /* ROUTINE */
-
-                      <div className="special-content">
-
-                        <span className="special-icon">
-                          {routine ===
-                          "Games"
-                            ? "🎮"
-                            : routine ===
-                              "Enrichment"
-                            ? "✨"
-                            : "🎓"}
-                        </span>
-
-                        <strong>
-                          {routine}
-                        </strong>
-
-                      </div>
-
                     ) : (
 
-                      /* EMPTY */
+                      /* EMPTY EDITABLE SLOT */
 
                       <div className="empty-slot">
 
@@ -933,7 +1045,13 @@ function Timetable() {
                         </span>
 
                         <span>
-                          Add lesson
+                          {period.name ===
+                          "Form"
+                            ? "Add form"
+                            : period.name ===
+                              "Extra-curricular"
+                            ? "Add activity"
+                            : "Add lesson"}
                         </span>
 
                       </div>
@@ -961,7 +1079,7 @@ function Timetable() {
 
         <div className="legend-item">
           <span className="legend-dot lesson-dot" />
-          Lesson
+          Lesson / activity
         </div>
 
         <div className="legend-item">
@@ -976,7 +1094,7 @@ function Timetable() {
 
         <div className="legend-item">
           <span className="legend-dot routine-dot" />
-          Registration
+          Form / school routine
         </div>
 
         <div className="legend-item">
@@ -998,12 +1116,12 @@ function Timetable() {
 
           <div>
             <strong>
-              School starts at 8:25am
+              Form
             </strong>
 
             <p>
-              Registration begins promptly
-              at 8:30am.
+              Add your own Form entry from
+              8:30–8:45 for each day.
             </p>
           </div>
 
@@ -1012,18 +1130,18 @@ function Timetable() {
         <div className="timetable-info-card">
 
           <div className="info-icon">
-            🎮
+            🏃
           </div>
 
           <div>
             <strong>
-              Games
+              Games & Enrichment
             </strong>
 
             <p>
-              Tuesday and Thursday
-              afternoons during Periods
-              4 & 5.
+              Add these yourself in whichever
+              lesson slots they actually appear
+              on your timetable.
             </p>
           </div>
 
@@ -1032,17 +1150,18 @@ function Timetable() {
         <div className="timetable-info-card">
 
           <div className="info-icon">
-            ✨
+            🌟
           </div>
 
           <div>
             <strong>
-              Wednesday Enrichment
+              After school
             </strong>
 
             <p>
-              Enrichment runs on Wednesday
-              afternoon until 4:30pm.
+              There is a fixed 16:15–16:30
+              break, then you can add your own
+              16:30–17:25 activity.
             </p>
           </div>
 
@@ -1080,8 +1199,8 @@ function Timetable() {
 
                 <h2>
                   {editingEntry
-                    ? "Edit Lesson"
-                    : "Add Lesson"}
+                    ? "Edit Timetable Entry"
+                    : "Add Timetable Entry"}
                 </h2>
 
                 <p>
@@ -1141,51 +1260,107 @@ function Timetable() {
               <div className="timetable-form-group">
 
                 <label>
-                  Period
+                  Slot
                 </label>
 
                 <select
                   value={
                     selectedPeriod
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextPeriod =
+                      event.target.value;
+
                     setSelectedPeriod(
-                      event.target.value
-                    )
-                  }
+                      nextPeriod
+                    );
+
+                    if (
+                      !subject.trim()
+                    ) {
+                      setSubject(
+                        getDefaultSubject(
+                          nextPeriod
+                        )
+                      );
+                    }
+                  }}
                 >
-                  {periods
-                    .filter(
-                      (period) =>
-                        !period.break
+                  {editablePeriods.map(
+                    (period) => (
+                      <option
+                        key={
+                          period.name
+                        }
+                        value={
+                          period.name
+                        }
+                      >
+                        {period.name}{" "}
+                        (
+                        {
+                          period.time
+                        }
+                        )
+                      </option>
                     )
-                    .map(
-                      (period) => (
-                        <option
-                          key={
-                            period.name
-                          }
-                          value={
-                            period.name
-                          }
-                        >
-                          {period.name}{" "}
-                          (
-                          {
-                            period.time
-                          }
-                          )
-                        </option>
-                      )
-                    )}
+                  )}
                 </select>
+
+              </div>
+
+              {/* QUICK OPTIONS */}
+
+              <div className="timetable-form-group">
+
+                <label>
+                  Quick options
+                </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "8px",
+                  }}
+                >
+                  {[
+                    "Games",
+                    "Enrichment",
+                    "Form",
+                    "Supervised Study",
+                    "Free Period",
+                  ].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        quickFill(value)
+                      }
+                      style={{
+                        padding:
+                          "8px 10px",
+                        borderRadius:
+                          "999px",
+                        border:
+                          "1px solid #dbe3ef",
+                        background:
+                          "white",
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
 
               </div>
 
               <div className="timetable-form-group">
 
                 <label>
-                  Subject *
+                  Subject / Activity *
                 </label>
 
                 <input
@@ -1196,7 +1371,7 @@ function Timetable() {
                       event.target.value
                     )
                   }
-                  placeholder="e.g. Mathematics"
+                  placeholder="e.g. History, Games, Enrichment, Choir"
                   required
                   autoFocus
                 />
@@ -1206,7 +1381,7 @@ function Timetable() {
               <div className="timetable-form-group">
 
                 <label>
-                  Teacher
+                  Teacher / Staff
                 </label>
 
                 <input
@@ -1217,7 +1392,7 @@ function Timetable() {
                       event.target.value
                     )
                   }
-                  placeholder="e.g. Mr Jones"
+                  placeholder="e.g. SC History or Mr Jones"
                 />
 
               </div>
@@ -1225,7 +1400,7 @@ function Timetable() {
               <div className="timetable-form-group">
 
                 <label>
-                  Room
+                  Room / Location
                 </label>
 
                 <input
@@ -1236,9 +1411,35 @@ function Timetable() {
                       event.target.value
                     )
                   }
-                  placeholder="e.g. Room 12"
+                  placeholder="e.g. C120, Sports Centre, Sixth Form Cafe"
                 />
 
+              </div>
+
+              <div
+                style={{
+                  padding:
+                    "12px 14px",
+                  borderRadius:
+                    "12px",
+                  background:
+                    "#f8fafc",
+                  marginBottom:
+                    "18px",
+                  fontSize:
+                    "14px",
+                }}
+              >
+                <strong>
+                  Time:
+                </strong>{" "}
+                {
+                  periods.find(
+                    (period) =>
+                      period.name ===
+                      selectedPeriod
+                  )?.time
+                }
               </div>
 
               <div className="timetable-modal-actions">
@@ -1293,7 +1494,7 @@ function Timetable() {
                       ? "Saving..."
                       : editingEntry
                       ? "Save Changes"
-                      : "Add Lesson"}
+                      : "Add Entry"}
                   </button>
 
                 </div>

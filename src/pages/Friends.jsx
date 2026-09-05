@@ -1,7 +1,5 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import StudentProfile from "./StudentProfile";
 
 function Friends({ setPage }) {
   const [user, setUser] = useState(null);
@@ -22,9 +20,22 @@ function Friends({ setPage }) {
   const [selectedStudent, setSelectedStudent] =
     useState(null);
 
+  const [profileLoading, setProfileLoading] =
+    useState(false);
+
+  const [profileSubjects, setProfileSubjects] =
+    useState([]);
+
+  const [profileTimetable, setProfileTimetable] =
+    useState([]);
+
   useEffect(() => {
     loadFriends();
   }, []);
+
+  // =========================================================
+  // LOAD FRIENDS PAGE
+  // =========================================================
 
   async function loadFriends() {
     try {
@@ -88,7 +99,10 @@ function Friends({ setPage }) {
 
       const allRequests = requestData || [];
 
+      // =====================================================
       // INCOMING REQUESTS
+      // =====================================================
+
       const incomingRequests =
         allRequests.filter(
           (request) =>
@@ -99,7 +113,10 @@ function Friends({ setPage }) {
 
       setRequests(incomingRequests);
 
+      // =====================================================
       // OUTGOING REQUESTS
+      // =====================================================
+
       const outgoingRequests =
         allRequests.filter(
           (request) =>
@@ -110,7 +127,10 @@ function Friends({ setPage }) {
 
       setSentRequests(outgoingRequests);
 
+      // =====================================================
       // ACCEPTED FRIENDS
+      // =====================================================
+
       const acceptedRequests =
         allRequests.filter(
           (request) =>
@@ -182,7 +202,6 @@ function Friends({ setPage }) {
           id,
           sender_id,
           receiver_id,
-          paper_id,
           room_id,
           status,
           created_at
@@ -200,33 +219,44 @@ function Friends({ setPage }) {
       const invitations =
         data || [];
 
-      // -----------------------------------------------------
-      // Load the paper information for each invitation.
-      // -----------------------------------------------------
-
       const invitationsWithPapers =
         await Promise.all(
           invitations.map(
             async (invitation) => {
               let paper = null;
 
-              if (
-                invitation.paper_id
-              ) {
+              if (invitation.room_id) {
                 const {
-                  data: paperData,
-                  error: paperError,
+                  data: roomData,
+                  error: roomError,
                 } = await supabase
-                  .from("past_papers")
-                  .select("*")
+                  .from("past_paper_rooms")
+                  .select("paper_id")
                   .eq(
                     "id",
-                    invitation.paper_id
+                    invitation.room_id
                   )
                   .maybeSingle();
 
-                if (!paperError) {
-                  paper = paperData;
+                if (
+                  !roomError &&
+                  roomData?.paper_id
+                ) {
+                  const {
+                    data: paperData,
+                    error: paperError,
+                  } = await supabase
+                    .from("past_papers")
+                    .select("*")
+                    .eq(
+                      "id",
+                      roomData.paper_id
+                    )
+                    .maybeSingle();
+
+                  if (!paperError) {
+                    paper = paperData;
+                  }
                 }
               }
 
@@ -247,11 +277,6 @@ function Friends({ setPage }) {
         error
       );
 
-      /*
-       * Don't break the Friends page if the
-       * invitation table has no rows yet.
-       */
-
       setPaperInvitations([]);
     }
   }
@@ -271,12 +296,191 @@ function Friends({ setPage }) {
   // OPEN PROFILE
   // =========================================================
 
-  function openProfile(studentId) {
+  async function openProfile(studentId) {
     setSelectedStudent(studentId);
+    setProfileLoading(true);
+    setProfileSubjects([]);
+    setProfileTimetable([]);
+    setMessage("");
+
+    try {
+      // =====================================================
+      // LOAD SUBJECTS
+      // =====================================================
+
+      const {
+        data: subjectData,
+        error: subjectError,
+      } = await supabase
+        .from("subjects")
+        .select("*")
+        .eq("user_id", studentId);
+
+      if (subjectError) {
+        console.warn(
+          "Could not load student subjects:",
+          subjectError.message
+        );
+
+        setProfileSubjects([]);
+      } else {
+        setProfileSubjects(
+          subjectData || []
+        );
+      }
+
+      // =====================================================
+      // LOAD TIMETABLE
+      //
+      // IMPORTANT:
+      // This uses timetable_entries, not timetable.
+      // =====================================================
+
+      const {
+        data: timetableData,
+        error: timetableError,
+      } = await supabase
+        .from("timetable_entries")
+        .select(`
+          id,
+          user_id,
+          day,
+          subject,
+          start_time,
+          end_time,
+          room,
+          teacher,
+          week,
+          period_name,
+          created_at,
+          updated_at
+        `)
+        .eq("user_id", studentId)
+        .order("day", {
+          ascending: true,
+        })
+        .order("start_time", {
+          ascending: true,
+        });
+
+      if (timetableError) {
+        console.warn(
+          "Could not load student timetable:",
+          timetableError.message
+        );
+
+        setProfileTimetable([]);
+      } else {
+        setProfileTimetable(
+          timetableData || []
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Could not load student profile data:",
+        error
+      );
+
+      setMessage(
+        error.message ||
+          "Could not load this student's information."
+      );
+    } finally {
+      setProfileLoading(false);
+    }
   }
 
   function closeProfile() {
     setSelectedStudent(null);
+    setProfileSubjects([]);
+    setProfileTimetable([]);
+  }
+
+  // =========================================================
+  // FORMAT TIME
+  // =========================================================
+
+  function formatTime(time) {
+    if (!time) {
+      return "";
+    }
+
+    const parts = String(time).split(":");
+
+    if (parts.length < 2) {
+      return String(time);
+    }
+
+    const hours = Number(parts[0]);
+    const minutes = String(parts[1]);
+
+    const suffix =
+      hours >= 12 ? "PM" : "AM";
+
+    const displayHour =
+      hours % 12 === 0
+        ? 12
+        : hours % 12;
+
+    return (
+      String(displayHour) +
+      ":" +
+      minutes +
+      " " +
+      suffix
+    );
+  }
+
+  // =========================================================
+  // FORMAT DAY
+  //
+  // Supports either numeric days or day names.
+  // =========================================================
+
+  function formatDay(day) {
+    const dayMap = {
+      1: "Monday",
+      2: "Tuesday",
+      3: "Wednesday",
+      4: "Thursday",
+      5: "Friday",
+      6: "Saturday",
+      7: "Sunday",
+    };
+
+    if (
+      typeof day === "number" ||
+      !Number.isNaN(Number(day))
+    ) {
+      return (
+        dayMap[Number(day)] ||
+        String(day)
+      );
+    }
+
+    const text =
+      String(day || "").trim();
+
+    if (!text) {
+      return "Unknown day";
+    }
+
+    return (
+      text.charAt(0).toUpperCase() +
+      text.slice(1).toLowerCase()
+    );
+  }
+
+  // =========================================================
+  // GET TIMETABLE FOR DAY
+  // =========================================================
+
+  function getTimetableDay(dayNumber) {
+    return profileTimetable.filter(
+      (lesson) =>
+        Number(lesson.day) ===
+        dayNumber
+    );
   }
 
   // =========================================================
@@ -502,10 +706,6 @@ function Friends({ setPage }) {
 
       setMessage("");
 
-      // -----------------------------------------------------
-      // Mark invitation as accepted
-      // -----------------------------------------------------
-
       const {
         error: updateError,
       } = await supabase
@@ -528,11 +728,6 @@ function Friends({ setPage }) {
         throw updateError;
       }
 
-      // -----------------------------------------------------
-      // Make sure the user is actually a member of
-      // the collaboration room.
-      // -----------------------------------------------------
-
       if (invitation.room_id) {
         const {
           error: memberError,
@@ -545,10 +740,6 @@ function Friends({ setPage }) {
               invitation.room_id,
             user_id: user.id,
           });
-
-        /*
-         * Ignore duplicate membership errors.
-         */
 
         if (
           memberError &&
@@ -566,44 +757,27 @@ function Friends({ setPage }) {
         "Invitation accepted! Opening the paper... 🚀"
       );
 
-      // -----------------------------------------------------
-      // Give the UI a moment to show the message.
-      // -----------------------------------------------------
-
-      setTimeout(() => {
-        /*
-         * If your app already has a page that opens
-         * a selected paper, this is where that route
-         * should be used.
-         *
-         * The most reliable option with the current
-         * setPage architecture is to store the paper
-         * in sessionStorage before navigating.
-         */
-
-        if (invitation.paper) {
-          sessionStorage.setItem(
-            "openPastPaper",
-            JSON.stringify(
-              invitation.paper
-            )
-          );
-        }
-
+      if (invitation.paper) {
         sessionStorage.setItem(
-          "pastPaperRoomId",
-          invitation.room_id ||
-            ""
+          "openPastPaper",
+          JSON.stringify(
+            invitation.paper
+          )
         );
+      }
 
-        setPage(
-          "pastPapers"
-        );
-      }, 500);
+      sessionStorage.setItem(
+        "pastPaperRoomId",
+        invitation.room_id || ""
+      );
 
       await loadPaperInvitations(
         user.id
       );
+
+      setTimeout(() => {
+        setPage("pastPapers");
+      }, 500);
     } catch (error) {
       console.error(
         "Could not accept past paper invitation:",
@@ -785,14 +959,588 @@ function Friends({ setPage }) {
   // =========================================================
 
   if (selectedStudent) {
+    const student =
+      getStudent(selectedStudent);
+
+    if (!student) {
+      return (
+        <div className="no-subjects">
+          <div className="no-subjects-icon">
+            😕
+          </div>
+
+          <h3>
+            Student not found
+          </h3>
+
+          <button
+            type="button"
+            className="primary-card-button"
+            onClick={closeProfile}
+          >
+            ← Back to Friends
+          </button>
+        </div>
+      );
+    }
+
+    const timetableDays = [
+      {
+        number: 1,
+        name: "Monday",
+      },
+      {
+        number: 2,
+        name: "Tuesday",
+      },
+      {
+        number: 3,
+        name: "Wednesday",
+      },
+      {
+        number: 4,
+        name: "Thursday",
+      },
+      {
+        number: 5,
+        name: "Friday",
+      },
+    ];
+
     return (
-      <StudentProfile
-        setPage={setPage}
-        studentId={
-          selectedStudent
-        }
-        onBack={closeProfile}
-      />
+      <div>
+        {/* PROFILE HEADER */}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "15px",
+            marginBottom: "25px",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={closeProfile}
+            style={{
+              border:
+                "1px solid #dbe3ef",
+              background: "white",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              cursor: "pointer",
+              fontSize: "14px",
+            }}
+          >
+            ← Back
+          </button>
+
+          <div>
+            <p className="card-eyebrow">
+              STUDENT PROFILE
+            </p>
+
+            <h2
+              style={{
+                margin: 0,
+              }}
+            >
+              {student.full_name ||
+                "Student"}{" "}
+              👤
+            </h2>
+          </div>
+        </div>
+
+        {message && (
+          <div className="auth-error">
+            {message}
+          </div>
+        )}
+
+        {/* PROFILE CARD */}
+
+        <div
+          style={{
+            background: "white",
+            borderRadius: "20px",
+            border:
+              "1px solid #e2e8f0",
+            padding: "25px",
+            marginBottom: "30px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                width: "75px",
+                height: "75px",
+                minWidth: "75px",
+                borderRadius: "50%",
+                background:
+                  "#e0e7ff",
+                display: "flex",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
+                fontSize: "34px",
+              }}
+            >
+              👤
+            </div>
+
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                }}
+              >
+                {student.full_name ||
+                  "Student"}
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "6px 0 0",
+                  color:
+                    "#64748b",
+                }}
+              >
+                {student.year_group ||
+                  "Sixth Form"}
+              </p>
+
+              {student.school_email && (
+                <p
+                  style={{
+                    margin:
+                      "4px 0 0",
+                    color:
+                      "#64748b",
+                    fontSize:
+                      "14px",
+                  }}
+                >
+                  {student.school_email}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {profileLoading ? (
+          <div className="no-subjects">
+            <div className="no-subjects-icon">
+              📚
+            </div>
+
+            <h3>
+              Loading profile...
+            </h3>
+
+            <p>
+              Getting their subjects
+              and timetable.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* =================================================
+                SUBJECTS
+                ================================================= */}
+
+            <div className="revision-section-heading">
+              <div>
+                <h3>
+                  Subjects 📚
+                </h3>
+
+                <p>
+                  The subjects this
+                  student takes.
+                </p>
+              </div>
+            </div>
+
+            {profileSubjects.length >
+            0 ? (
+              <div
+                className="revision-subject-grid"
+                style={{
+                  marginBottom:
+                    "35px",
+                }}
+              >
+                {profileSubjects.map(
+                  (subject, index) => (
+                    <div
+                      key={
+                        subject.id ||
+                        subject.subject_id ||
+                        subject.name ||
+                        index
+                      }
+                      className="revision-subject-card"
+                    >
+                      <div className="revision-subject-top">
+                        <div className="revision-subject-icon">
+                          📚
+                        </div>
+                      </div>
+
+                      <div className="revision-subject-content">
+                        <h3>
+                          {subject.name ||
+                            subject.subject_name ||
+                            subject.title ||
+                            "Subject"}
+                        </h3>
+
+                        {subject.exam_board && (
+                          <p>
+                            {subject.exam_board}
+                          </p>
+                        )}
+
+                        {subject.level && (
+                          <p>
+                            {subject.level}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "25px",
+                  borderRadius: "16px",
+                  background:
+                    "#f8fafc",
+                  color:
+                    "#64748b",
+                  textAlign:
+                    "center",
+                  marginBottom:
+                    "35px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      "30px",
+                    marginBottom:
+                      "8px",
+                  }}
+                >
+                  📚
+                </div>
+
+                <strong>
+                  No subjects available
+                </strong>
+
+                <p>
+                  This student has
+                  not added their
+                  subjects yet.
+                </p>
+              </div>
+            )}
+
+            {/* =================================================
+                TIMETABLE
+                ================================================= */}
+
+            <div className="revision-section-heading">
+              <div>
+                <h3>
+                  Timetable 🗓️
+                </h3>
+
+                <p>
+                  See this student's
+                  weekly timetable.
+                </p>
+              </div>
+            </div>
+
+            {profileTimetable.length >
+            0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection:
+                    "column",
+                  gap: "20px",
+                }}
+              >
+                {timetableDays.map(
+                  (day) => {
+                    const lessons =
+                      getTimetableDay(
+                        day.number
+                      );
+
+                    return (
+                      <div
+                        key={
+                          day.number
+                        }
+                        style={{
+                          background:
+                            "white",
+                          borderRadius:
+                            "18px",
+                          border:
+                            "1px solid #e2e8f0",
+                          overflow:
+                            "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding:
+                              "15px 20px",
+                            background:
+                              "#f8fafc",
+                            borderBottom:
+                              "1px solid #e2e8f0",
+                          }}
+                        >
+                          <h3
+                            style={{
+                              margin:
+                                0,
+                            }}
+                          >
+                            {day.name}
+                          </h3>
+                        </div>
+
+                        {lessons.length >
+                        0 ? (
+                          <div
+                            style={{
+                              padding:
+                                "15px",
+                              display:
+                                "flex",
+                              flexDirection:
+                                "column",
+                              gap:
+                                "10px",
+                            }}
+                          >
+                            {lessons.map(
+                              (
+                                lesson
+                              ) => (
+                                <div
+                                  key={
+                                    lesson.id
+                                  }
+                                  style={{
+                                    display:
+                                      "flex",
+                                    alignItems:
+                                      "center",
+                                    gap:
+                                      "15px",
+                                    padding:
+                                      "14px",
+                                    borderRadius:
+                                      "12px",
+                                    background:
+                                      "#f8fafc",
+                                    flexWrap:
+                                      "wrap",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      minWidth:
+                                        "110px",
+                                      fontWeight:
+                                        "600",
+                                      color:
+                                        "#4f46e5",
+                                      fontSize:
+                                        "13px",
+                                    }}
+                                  >
+                                    {formatTime(
+                                      lesson.start_time
+                                    )}
+
+                                    {lesson.end_time && (
+                                      <span>
+                                        {" - "}
+                                        {formatTime(
+                                          lesson.end_time
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      flex:
+                                        1,
+                                      minWidth:
+                                        "180px",
+                                    }}
+                                  >
+                                    <strong>
+                                      {lesson.subject ||
+                                        "Lesson"}
+                                    </strong>
+
+                                    {lesson.period_name && (
+                                      <div
+                                        style={{
+                                          fontSize:
+                                            "13px",
+                                          color:
+                                            "#64748b",
+                                          marginTop:
+                                            "3px",
+                                        }}
+                                      >
+                                        {lesson.period_name}
+                                      </div>
+                                    )}
+
+                                    {(lesson.teacher ||
+                                      lesson.room) && (
+                                      <div
+                                        style={{
+                                          fontSize:
+                                            "13px",
+                                          color:
+                                            "#64748b",
+                                          marginTop:
+                                            "5px",
+                                        }}
+                                      >
+                                        {lesson.teacher && (
+                                          <span>
+                                            👨‍🏫{" "}
+                                            {
+                                              lesson.teacher
+                                            }
+                                          </span>
+                                        )}
+
+                                        {lesson.teacher &&
+                                          lesson.room && (
+                                            <span>
+                                              {" • "}
+                                            </span>
+                                          )}
+
+                                        {lesson.room && (
+                                          <span>
+                                            📍{" "}
+                                            {
+                                              lesson.room
+                                            }
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {lesson.week && (
+                                      <div
+                                        style={{
+                                          fontSize:
+                                            "12px",
+                                          color:
+                                            "#94a3b8",
+                                          marginTop:
+                                            "5px",
+                                        }}
+                                      >
+                                        Week{" "}
+                                        {
+                                          lesson.week
+                                        }
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              padding:
+                                "18px",
+                              color:
+                                "#94a3b8",
+                              fontSize:
+                                "14px",
+                            }}
+                          >
+                            No lessons scheduled.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "25px",
+                  borderRadius: "16px",
+                  background:
+                    "#f8fafc",
+                  color:
+                    "#64748b",
+                  textAlign:
+                    "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      "30px",
+                    marginBottom:
+                      "8px",
+                  }}
+                >
+                  🗓️
+                </div>
+
+                <strong>
+                  No timetable available
+                </strong>
+
+                <p>
+                  This student has
+                  not added their
+                  timetable yet.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     );
   }
 
@@ -808,19 +1556,17 @@ function Friends({ setPage }) {
       .filter(Boolean);
 
   // =========================================================
-  // RENDER
+  // RENDER FRIENDS PAGE
   // =========================================================
 
   return (
     <div>
-
       {/* =====================================================
           HEADER
           ===================================================== */}
 
       <div className="revision-header">
         <div>
-
           <p className="card-eyebrow">
             MONMOUTH SIXTH FORM
           </p>
@@ -835,7 +1581,6 @@ function Friends({ setPage }) {
             network and revise
             together.
           </p>
-
         </div>
       </div>
 
@@ -859,31 +1604,28 @@ function Friends({ setPage }) {
           <div
             className="revision-section-heading"
             style={{
-              marginTop: "35px",
+              marginTop:
+                "35px",
             }}
           >
             <div>
-
               <h3>
-                📄 Past Paper Invitations
+                📄 Past Paper
+                Invitations
               </h3>
 
               <p>
-                {paperInvitations.length} pending
-                invitation
+                {paperInvitations.length}{" "}
+                pending invitation
                 {paperInvitations.length ===
                 1
                   ? ""
                   : "s"}
               </p>
-
             </div>
           </div>
 
-          <div
-            className="revision-subject-grid"
-          >
-
+          <div className="revision-subject-grid">
             {paperInvitations.map(
               (invitation) => {
                 const sender =
@@ -905,9 +1647,7 @@ function Friends({ setPage }) {
                     }
                     className="revision-subject-card"
                   >
-
                     <div className="revision-subject-top">
-
                       <div className="revision-subject-icon">
                         📄
                       </div>
@@ -915,11 +1655,9 @@ function Friends({ setPage }) {
                       <div className="revision-subject-arrow">
                         📥
                       </div>
-
                     </div>
 
                     <div className="revision-subject-content">
-
                       <h3>
                         {paper?.name ||
                           paper?.title ||
@@ -936,12 +1674,9 @@ function Friends({ setPage }) {
                       {paper?.subject && (
                         <p>
                           📚{" "}
-                          {
-                            paper.subject
-                          }
+                          {paper.subject}
                         </p>
                       )}
-
                     </div>
 
                     <div
@@ -950,10 +1685,10 @@ function Friends({ setPage }) {
                           "15px",
                         display:
                           "flex",
-                        gap: "10px",
+                        gap:
+                          "10px",
                       }}
                     >
-
                       <button
                         type="button"
                         className="primary-card-button"
@@ -1000,14 +1735,11 @@ function Friends({ setPage }) {
                       >
                         Decline
                       </button>
-
                     </div>
-
                   </div>
                 );
               }
             )}
-
           </div>
         </>
       )}
@@ -1017,40 +1749,31 @@ function Friends({ setPage }) {
           ===================================================== */}
 
       <div className="revision-section-heading">
-
         <div>
-
           <h3>
             Your Friends 🤝
           </h3>
 
           <p>
-            {friendStudents.length} friend
+            {friendStudents.length}{" "}
+            friend
             {friendStudents.length ===
             1
               ? ""
               : "s"}
           </p>
-
         </div>
-
       </div>
 
       {friendStudents.length >
       0 ? (
-
         <div className="revision-subject-grid">
-
           {friendStudents.map(
             (friend) => (
-
               <div
-                key={
-                  friend.id
-                }
+                key={friend.id}
                 className="revision-subject-card"
               >
-
                 <div
                   onClick={() =>
                     openProfile(
@@ -1062,9 +1785,7 @@ function Friends({ setPage }) {
                       "pointer",
                   }}
                 >
-
                   <div className="revision-subject-top">
-
                     <div className="revision-subject-icon">
                       👤
                     </div>
@@ -1072,11 +1793,9 @@ function Friends({ setPage }) {
                     <div className="revision-subject-arrow">
                       →
                     </div>
-
                   </div>
 
                   <div className="revision-subject-content">
-
                     <h3>
                       {friend.full_name ||
                         "Student"}
@@ -1101,9 +1820,7 @@ function Friends({ setPage }) {
                     >
                       View Profile →
                     </p>
-
                   </div>
-
                 </div>
 
                 <button
@@ -1139,18 +1856,12 @@ function Friends({ setPage }) {
                     ? "Removing..."
                     : "Remove Friend"}
                 </button>
-
               </div>
-
             )
           )}
-
         </div>
-
       ) : (
-
         <div className="no-subjects">
-
           <div className="no-subjects-icon">
             🤝
           </div>
@@ -1164,9 +1875,7 @@ function Friends({ setPage }) {
             send them a friend
             request.
           </p>
-
         </div>
-
       )}
 
       {/* =====================================================
@@ -1176,50 +1885,42 @@ function Friends({ setPage }) {
       <div
         className="revision-section-heading"
         style={{
-          marginTop: "35px",
+          marginTop:
+            "35px",
         }}
       >
-
         <div>
-
           <h3>
             Friend Requests 📥
           </h3>
 
           <p>
-            {requests.length} pending
-            request
+            {requests.length}{" "}
+            pending request
             {requests.length ===
             1
               ? ""
               : "s"}
           </p>
-
         </div>
-
       </div>
 
       {requests.length > 0 ? (
-
         <div className="revision-subject-grid">
-
           {requests.map(
             (request) => {
-
               const sender =
                 getStudent(
                   request.sender_id
                 );
 
               return (
-
                 <div
                   key={
                     request.id
                   }
                   className="revision-subject-card"
                 >
-
                   <div
                     onClick={() => {
                       if (sender) {
@@ -1235,9 +1936,7 @@ function Friends({ setPage }) {
                           : "default",
                     }}
                   >
-
                     <div className="revision-subject-top">
-
                       <div className="revision-subject-icon">
                         👤
                       </div>
@@ -1245,11 +1944,9 @@ function Friends({ setPage }) {
                       <div className="revision-subject-arrow">
                         📥
                       </div>
-
                     </div>
 
                     <div className="revision-subject-content">
-
                       <h3>
                         {sender?.full_name ||
                           "Student"}
@@ -1276,9 +1973,7 @@ function Friends({ setPage }) {
                           View Profile →
                         </p>
                       )}
-
                     </div>
-
                   </div>
 
                   <div
@@ -1291,7 +1986,6 @@ function Friends({ setPage }) {
                         "15px",
                     }}
                   >
-
                     <button
                       type="button"
                       className="primary-card-button"
@@ -1337,19 +2031,13 @@ function Friends({ setPage }) {
                     >
                       Decline
                     </button>
-
                   </div>
-
                 </div>
-
               );
             }
           )}
-
         </div>
-
       ) : (
-
         <div
           style={{
             padding:
@@ -1367,7 +2055,6 @@ function Friends({ setPage }) {
           No pending friend
           requests.
         </div>
-
       )}
 
       {/* =====================================================
@@ -1381,9 +2068,7 @@ function Friends({ setPage }) {
             "35px",
         }}
       >
-
         <div>
-
           <h3>
             Find Students 🔎
           </h3>
@@ -1392,9 +2077,7 @@ function Friends({ setPage }) {
             Find other students at
             Monmouth Sixth Form.
           </p>
-
         </div>
-
       </div>
 
       {/* SEARCH */}
@@ -1405,7 +2088,6 @@ function Friends({ setPage }) {
             "20px",
         }}
       >
-
         <input
           type="text"
           value={search}
@@ -1432,33 +2114,27 @@ function Friends({ setPage }) {
               "none",
           }}
         />
-
       </div>
 
       {/* STUDENTS */}
 
       {filteredStudents.length >
       0 ? (
-
         <div className="revision-subject-grid">
-
           {filteredStudents.map(
             (student) => {
-
               const status =
                 getStatus(
                   student.id
                 );
 
               return (
-
                 <div
                   key={
                     student.id
                   }
                   className="revision-subject-card"
                 >
-
                   {/* PROFILE */}
 
                   <div
@@ -1472,9 +2148,7 @@ function Friends({ setPage }) {
                         "pointer",
                     }}
                   >
-
                     <div className="revision-subject-top">
-
                       <div className="revision-subject-icon">
                         👤
                       </div>
@@ -1482,11 +2156,9 @@ function Friends({ setPage }) {
                       <div className="revision-subject-arrow">
                         →
                       </div>
-
                     </div>
 
                     <div className="revision-subject-content">
-
                       <h3>
                         {student.full_name ||
                           "Student"}
@@ -1511,9 +2183,7 @@ function Friends({ setPage }) {
                       >
                         View Profile →
                       </p>
-
                     </div>
-
                   </div>
 
                   {/* ADD FRIEND */}
@@ -1582,7 +2252,6 @@ function Friends({ setPage }) {
                           "15px",
                       }}
                     >
-
                       <button
                         type="button"
                         className="primary-card-button"
@@ -1591,7 +2260,6 @@ function Friends({ setPage }) {
                             "100%",
                         }}
                         onClick={() => {
-
                           const request =
                             requests.find(
                               (item) =>
@@ -1604,12 +2272,10 @@ function Friends({ setPage }) {
                               request.id
                             );
                           }
-
                         }}
                       >
                         📥 Accept Request
                       </button>
-
                     </div>
                   )}
 
@@ -1638,19 +2304,13 @@ function Friends({ setPage }) {
                       ✓ Friends
                     </div>
                   )}
-
                 </div>
-
               );
             }
           )}
-
         </div>
-
       ) : (
-
         <div className="no-subjects">
-
           <div className="no-subjects-icon">
             🔎
           </div>
@@ -1662,11 +2322,8 @@ function Friends({ setPage }) {
           <p>
             Try a different search.
           </p>
-
         </div>
-
       )}
-
     </div>
   );
 }

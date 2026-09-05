@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import VoiceChat from "./VoiceChat";
@@ -27,7 +28,6 @@ function StudyRoom({ setPage, sessionId, onBack }) {
 
     const roomChannel = supabase
       .channel(`study-room-${sessionId}`)
-
       .on(
         "postgres_changes",
         {
@@ -40,7 +40,6 @@ function StudyRoom({ setPage, sessionId, onBack }) {
           loadRoom();
         }
       )
-
       .on(
         "postgres_changes",
         {
@@ -53,7 +52,6 @@ function StudyRoom({ setPage, sessionId, onBack }) {
           loadMembers();
         }
       )
-
       .subscribe();
 
     const messageChannel = supabase
@@ -145,7 +143,6 @@ function StudyRoom({ setPage, sessionId, onBack }) {
         setError(
           "This study room is no longer active."
         );
-
         return;
       }
 
@@ -231,6 +228,11 @@ function StudyRoom({ setPage, sessionId, onBack }) {
       );
 
       setMessages([]);
+
+      setError(
+        err?.message ||
+          "Could not load room messages."
+      );
     }
   }
 
@@ -238,6 +240,9 @@ function StudyRoom({ setPage, sessionId, onBack }) {
     event.preventDefault();
 
     if (!currentUser) {
+      setError(
+        "You must be logged in to send a message."
+      );
       return;
     }
 
@@ -1196,7 +1201,6 @@ function StudyRoom({ setPage, sessionId, onBack }) {
               </li>
             </ul>
           </div>
-
         </div>
       </div>
     </div>
