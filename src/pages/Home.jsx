@@ -1,455 +1,207 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-function Home({ setPage }) {
+const QUICK_ACTIONS = [
+  { title: "Start revising", description: "Jump into your subjects and keep momentum going.", icon: "✦", page: "revision", accent: "violet" },
+  { title: "Study Hub", description: "Study alongside friends and other students.", icon: "◎", page: "studyHub", accent: "cyan" },
+  { title: "My timetable", description: "See what your day and week look like.", icon: "◫", page: "timetable", accent: "amber" },
+];
+
+function Home({ setPage, onSelectSubject, unreadNotifications = 0 }) {
   const [profile, setProfile] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
   async function loadDashboard() {
     try {
       setLoading(true);
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         setPage("login");
         return;
       }
 
-      /* LOAD PROFILE */
-
-      const {
-        data: profileData,
-        error: profileError,
-      } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select(
-          "full_name, school_email, year_group"
-        )
+        .select("full_name, school_email, year_group")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (profileError) {
-        console.error(
-          "Could not load profile:",
-          profileError
-        );
-      }
-
+      if (profileError) console.error("Could not load profile:", profileError);
       setProfile(profileData);
 
-      /* LOAD SUBJECTS */
-
-      const {
-        data: subjectData,
-        error: subjectError,
-      } = await supabase
+      const { data: subjectData, error: subjectError } = await supabase
         .from("student_subjects")
-        .select(`
-          subject_id,
-          subjects (
-            id,
-            name,
-            description,
-            icon
-          )
-        `)
+        .select(`subject_id, subjects (id, name, description, icon)`)
         .eq("student_id", user.id);
 
       if (subjectError) {
-        console.error(
-          "Could not load subjects:",
-          subjectError
-        );
+        console.error("Could not load subjects:", subjectError);
       } else {
-        const formattedSubjects =
-          (subjectData || [])
-            .map((item) => item.subjects)
-            .filter(Boolean);
-
-        setSubjects(formattedSubjects);
+        setSubjects((subjectData || []).map((item) => item.subjects).filter(Boolean));
       }
     } catch (error) {
-      console.error(
-        "Could not load dashboard:",
-        error
-      );
+      console.error("Could not load dashboard:", error);
     } finally {
       setLoading(false);
     }
   }
 
+  const firstName = profile?.full_name?.trim()?.split(" ")[0] || "Student";
+  const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-GB", {
+    weekday: "long", day: "numeric", month: "long"
+  }).format(new Date()), []);
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  }, []);
+
   if (loading) {
     return (
-      <div className="page-content">
-        <div className="no-subjects">
-          <div className="no-subjects-icon">
-            📚
-          </div>
-
-          <h3>
-            Loading your dashboard...
-          </h3>
-
-          <p>
-            Getting everything ready for you.
-          </p>
+      <div className="v2-home-loading">
+        <div className="v2-skeleton v2-skeleton-hero" />
+        <div className="v2-home-loading-grid">
+          <div className="v2-skeleton" /><div className="v2-skeleton" /><div className="v2-skeleton" />
         </div>
       </div>
     );
   }
 
-  const firstName =
-    profile?.full_name
-      ?.trim()
-      ?.split(" ")[0] || "Student";
-
   return (
-    <div className="page-content">
+    <div className="v2-home">
+      <section className="v2-hero">
+        <div className="v2-hero-glow v2-hero-glow-one" />
+        <div className="v2-hero-glow v2-hero-glow-two" />
 
-      {/* ==========================================
-          WELCOME
-      ========================================== */}
-
-      <section className="dashboard-welcome">
-
-        <p className="card-eyebrow">
-          MONMOUTH SIXTH FORM
-        </p>
-
-        <h2>
-          Welcome back, {firstName}! 👋
-        </h2>
-
-        <p>
-          Your sixth form revision hub is ready.
-          Keep track of your subjects, revision,
-          timetable and study sessions all in one
-          place.
-        </p>
-
-      </section>
-
-
-      {/* ==========================================
-          QUICK ACTIONS
-      ========================================== */}
-
-      <section
-        style={{
-          marginTop: "25px",
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "15px",
-        }}
-      >
-
-        {/* REVISION */}
-
-        <button
-          type="button"
-          className="primary-card-button"
-          onClick={() => setPage("revision")}
-          style={{
-            minHeight: "100px",
-            textAlign: "left",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "28px",
-              marginBottom: "8px",
-            }}
-          >
-            📚
+        <div className="v2-hero-copy">
+          <div className="v2-hero-kicker"><span className="v2-kicker-dot" />{dateLabel}</div>
+          <h2>{greeting}, <span>{firstName}.</span></h2>
+          <p>Your study space is ready. Pick up where you left off, organise your work, and make this session count.</p>
+          <div className="v2-hero-actions">
+            <button type="button" className="v2-button v2-button-primary" onClick={() => setPage("revision")}>
+              Start revising <span>→</span>
+            </button>
+            <button type="button" className="v2-button v2-button-ghost" onClick={() => setPage("timetable")}>
+              View timetable
+            </button>
           </div>
-
-          <strong>
-            Revision
-          </strong>
-
-          <div
-            style={{
-              fontSize: "13px",
-              marginTop: "5px",
-              opacity: 0.8,
-            }}
-          >
-            Revise your subjects
-          </div>
-        </button>
-
-
-        {/* STUDY HUB */}
-
-        <button
-          type="button"
-          className="primary-card-button"
-          onClick={() => setPage("studyHub")}
-          style={{
-            minHeight: "100px",
-            textAlign: "left",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "28px",
-              marginBottom: "8px",
-            }}
-          >
-            🧠
-          </div>
-
-          <strong>
-            Study Hub
-          </strong>
-
-          <div
-            style={{
-              fontSize: "13px",
-              marginTop: "5px",
-              opacity: 0.8,
-            }}
-          >
-            Study with other students
-          </div>
-        </button>
-
-
-        {/* TIMETABLE */}
-
-        <button
-          type="button"
-          className="primary-card-button"
-          onClick={() => setPage("timetable")}
-          style={{
-            minHeight: "100px",
-            textAlign: "left",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "28px",
-              marginBottom: "8px",
-            }}
-          >
-            🗓️
-          </div>
-
-          <strong>
-            Timetable
-          </strong>
-
-          <div
-            style={{
-              fontSize: "13px",
-              marginTop: "5px",
-              opacity: 0.8,
-            }}
-          >
-            View your timetable
-          </div>
-        </button>
-
-      </section>
-
-
-      {/* ==========================================
-          SUBJECTS
-      ========================================== */}
-
-      <section
-        style={{
-          marginTop: "35px",
-        }}
-      >
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "15px",
-            flexWrap: "wrap",
-            marginBottom: "18px",
-          }}
-        >
-
-          <div>
-
-            <p className="card-eyebrow">
-              YOUR STUDIES
-            </p>
-
-            <h2
-              style={{
-                margin: 0,
-              }}
-            >
-              My Subjects
-            </h2>
-
-          </div>
-
-
-          {/* MANAGE SUBJECTS */}
-
-          <button
-            type="button"
-            className="primary-card-button"
-            onClick={() =>
-              setPage("subjectSelection")
-            }
-          >
-            ⚙️ Manage Subjects
-          </button>
-
         </div>
 
+        <div className="v2-hero-orbit" aria-hidden="true">
+          <div className="v2-orbit-ring v2-orbit-ring-one" />
+          <div className="v2-orbit-ring v2-orbit-ring-two" />
+          <div className="v2-orbit-core"><span>TR</span></div>
+          <div className="v2-orbit-chip v2-orbit-chip-one">A*</div>
+          <div className="v2-orbit-chip v2-orbit-chip-two">∞</div>
+          <div className="v2-orbit-chip v2-orbit-chip-three">Σ</div>
+        </div>
+      </section>
 
-        {/* SUBJECT LIST */}
+      <section className="v2-stat-row">
+        <button className="v2-stat-card" type="button" onClick={() => setPage("revision")}>
+          <span className="v2-stat-icon violet">↗</span>
+          <div><strong>{subjects.length}</strong><span>Subjects selected</span></div>
+        </button>
+        <button className="v2-stat-card" type="button" onClick={() => setPage("notifications")}>
+          <span className="v2-stat-icon rose">•</span>
+          <div><strong>{unreadNotifications}</strong><span>Unread notifications</span></div>
+        </button>
+        <button className="v2-stat-card" type="button" onClick={() => setPage("assignments")}>
+          <span className="v2-stat-icon cyan">✓</span>
+          <div><strong>Ready</strong><span>Assignment workspace</span></div>
+        </button>
+        <button className="v2-stat-card" type="button" onClick={() => setPage("notes")}>
+          <span className="v2-stat-icon amber">✎</span>
+          <div><strong>Notes</strong><span>Your study notebook</span></div>
+        </button>
+      </section>
+
+      <div className="v2-dashboard-grid">
+        <section className="v2-panel v2-actions-panel">
+          <div className="v2-section-heading">
+            <div><span className="v2-section-eyebrow">QUICK LAUNCH</span><h3>What do you want to do?</h3></div>
+            <span className="v2-section-pill">Workspace</span>
+          </div>
+          <div className="v2-quick-grid">
+            {QUICK_ACTIONS.map((action) => (
+              <button key={action.page} type="button" className={`v2-quick-card ${action.accent}`} onClick={() => setPage(action.page)}>
+                <span className="v2-quick-icon">{action.icon}</span>
+                <div><strong>{action.title}</strong><p>{action.description}</p></div>
+                <span className="v2-quick-arrow">↗</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="v2-panel v2-profile-panel">
+          <div className="v2-profile-gradient">
+            <div className="v2-profile-avatar">{firstName.slice(0,1).toUpperCase()}</div>
+            <div>
+              <span>STUDENT PROFILE</span>
+              <h3>{profile?.full_name || "Your account"}</h3>
+              <p>{profile?.year_group || "Sixth Form"}</p>
+            </div>
+          </div>
+          <div className="v2-profile-details">
+            <div><span>School email</span><strong>{profile?.school_email || "Not set"}</strong></div>
+            <div><span>Year group</span><strong>{profile?.year_group || "Not set"}</strong></div>
+          </div>
+          <button type="button" className="v2-profile-button" onClick={() => setPage("subjectSelection")}>
+            Manage my subjects <span>→</span>
+          </button>
+        </section>
+      </div>
+
+      <section className="v2-panel v2-subjects-panel">
+        <div className="v2-section-heading">
+          <div>
+            <span className="v2-section-eyebrow">YOUR STUDIES</span>
+            <h3>My subjects</h3>
+            <p>Everything you're studying, one click away.</p>
+          </div>
+          <button type="button" className="v2-button v2-button-soft" onClick={() => setPage("subjectSelection")}>
+            Manage subjects
+          </button>
+        </div>
 
         {subjects.length === 0 ? (
-
-          <div className="no-subjects">
-
-            <div className="no-subjects-icon">
-              📚
-            </div>
-
-            <h3>
-              No subjects selected yet
-            </h3>
-
-            <p>
-              Choose the subjects you're studying
-              to personalise your Revision Hub.
-            </p>
-
-            <button
-              type="button"
-              className="primary-card-button"
-              onClick={() =>
-                setPage("subjectSelection")
-              }
-              style={{
-                marginTop: "15px",
-              }}
-            >
-              Choose My Subjects
+          <div className="v2-empty-state">
+            <div className="v2-empty-icon">＋</div>
+            <h4>Build your study dashboard</h4>
+            <p>Select your A-level subjects and they'll appear here.</p>
+            <button type="button" className="v2-button v2-button-primary" onClick={() => setPage("subjectSelection")}>
+              Choose my subjects
             </button>
-
           </div>
-
         ) : (
-
-          <div className="subject-grid">
-
-            {subjects.map((subject) => (
-
+          <div className="v2-subject-grid">
+            {subjects.map((subject, index) => (
               <button
                 key={subject.id}
                 type="button"
-                className="subject-option selected"
-                onClick={() => {
-                  setPage("subjectResources");
-                }}
+                className={`v2-subject-card subject-tone-${(index % 4) + 1}`}
+                onClick={() => onSelectSubject ? onSelectSubject(subject) : setPage("subjectResources")}
               >
-
-                <div className="subject-option-icon">
-                  {subject.icon || "📚"}
+                <div className="v2-subject-top">
+                  <div className="v2-subject-icon">{subject.icon || "✦"}</div>
+                  <span className="v2-subject-arrow">↗</span>
                 </div>
-
-                <div
-                  style={{
-                    textAlign: "left",
-                  }}
-                >
-
-                  <h3>
-                    {subject.name}
-                  </h3>
-
-                  <p>
-                    {subject.description ||
-                      "Sixth form subject"}
-                  </p>
-
+                <div className="v2-subject-copy">
+                  <h4>{subject.name}</h4>
+                  <p>{subject.description || "Sixth form subject"}</p>
                 </div>
-
-                <div
-                  style={{
-                    marginLeft: "auto",
-                    fontSize: "18px",
-                  }}
-                >
-                  →
+                <div className="v2-subject-footer">
+                  <span>Open subject</span><span className="v2-subject-line" />
                 </div>
-
               </button>
-
             ))}
-
           </div>
-
         )}
-
       </section>
-
-
-      {/* ==========================================
-          PROFILE
-      ========================================== */}
-
-      <section
-        style={{
-          marginTop: "35px",
-        }}
-      >
-
-        <div
-          style={{
-            padding: "22px",
-            borderRadius: "18px",
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-
-          <p className="card-eyebrow">
-            MY ACCOUNT
-          </p>
-
-          <h3>
-            {profile?.full_name ||
-              "Your account"}
-          </h3>
-
-          {profile?.school_email && (
-            <p>
-              {profile.school_email}
-            </p>
-          )}
-
-          {profile?.year_group && (
-            <p>
-              {profile.year_group}
-            </p>
-          )}
-
-        </div>
-
-      </section>
-
     </div>
   );
 }
