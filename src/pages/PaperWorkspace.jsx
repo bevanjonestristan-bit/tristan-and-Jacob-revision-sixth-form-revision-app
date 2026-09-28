@@ -44,6 +44,8 @@ function PaperWorkspace({ paper, setPage }) {
 
   const annotationsRef = useRef([]);
 
+  const autoJoinHandledRef = useRef(false);
+
   /* =========================================================
      PDF STATE
      ========================================================= */
@@ -341,7 +343,6 @@ function PaperWorkspace({ paper, setPage }) {
       setError(
         "Start the live room before inviting friends."
       );
-
       return;
     }
 
@@ -360,53 +361,17 @@ function PaperWorkspace({ paper, setPage }) {
         );
       }
 
-      const {
-        data: existingInvitation,
-        error: existingError,
-      } = await supabase
-        .from("past_paper_invitations")
-        .select("id, status")
-        .eq(
-          "room_id",
-          roomRef.current.id
-        )
-        .eq("receiver_id", friendId)
-        .maybeSingle();
+      const { error: invitationError } =
+        await supabase.rpc(
+          "send_past_paper_invitation",
+          {
+            p_room_id: roomRef.current.id,
+            p_receiver_id: friendId,
+          }
+        );
 
-      if (existingError) {
-        throw existingError;
-      }
-
-      if (existingInvitation) {
-        const { error: updateError } =
-          await supabase
-            .from("past_paper_invitations")
-            .update({
-              sender_id: user.id,
-              status: "pending",
-            })
-            .eq(
-              "id",
-              existingInvitation.id
-            );
-
-        if (updateError) {
-          throw updateError;
-        }
-      } else {
-        const { error: invitationError } =
-          await supabase
-            .from("past_paper_invitations")
-            .insert({
-              room_id: roomRef.current.id,
-              sender_id: user.id,
-              receiver_id: friendId,
-              status: "pending",
-            });
-
-        if (invitationError) {
-          throw invitationError;
-        }
+      if (invitationError) {
+        throw invitationError;
       }
 
       setInvitedFriends((current) => {
@@ -431,7 +396,7 @@ function PaperWorkspace({ paper, setPage }) {
       );
 
       setError(
-        err.message ||
+        err?.message ||
           "Could not send invitation."
       );
     } finally {
@@ -820,6 +785,164 @@ function PaperWorkspace({ paper, setPage }) {
       supabase.removeChannel(channel);
     };
   }, [paper?.id, pageCount]);
+
+  /* =========================================================
+     AUTO-JOIN ACCEPTED INVITATION ROOM
+     ========================================================= */
+
+  useEffect(() => {
+    if (
+      autoJoinHandledRef.current ||
+      !paper?.id ||
+      collaborationStatus !== "connected"
+    ) {
+      return;
+    }
+
+    const storedRoomId =
+      sessionStorage.getItem(
+        "pastPaperRoomId"
+      );
+
+    const shouldAutoJoin =
+      sessionStorage.getItem(
+        "pastPaperAutoJoin"
+      ) === "true";
+
+    if (
+      !storedRoomId ||
+      !shouldAutoJoin
+    ) {
+      return;
+    }
+
+    autoJoinHandledRef.current = true;
+
+    async function joinAcceptedRoom() {
+      try {
+        setRoomLoading(true);
+        setError("");
+
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          throw new Error(
+            "You must be logged in to join the live paper room."
+          );
+        }
+
+        const {
+          data: room,
+          error: roomError,
+        } = await supabase
+          .from("past_paper_rooms")
+          .select(
+            "id, room_code, paper_id, created_by"
+          )
+          .eq("id", storedRoomId)
+          .maybeSingle();
+
+        if (roomError) {
+          throw roomError;
+        }
+
+        if (!room) {
+          throw new Error(
+            "That collaboration room no longer exists."
+          );
+        }
+
+        if (
+          String(room.paper_id) !==
+          String(paper.id)
+        ) {
+          throw new Error(
+            "The invitation room does not match this past paper."
+          );
+        }
+
+        const {
+          data: membership,
+          error: membershipError,
+        } = await supabase
+          .from(
+            "past_paper_room_members"
+          )
+          .select("room_id, user_id")
+          .eq("room_id", room.id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (membershipError) {
+          throw membershipError;
+        }
+
+        if (!membership) {
+          throw new Error(
+            "You are not a member of this collaboration room."
+          );
+        }
+
+        roomRef.current = room;
+        setRoomCode(
+          room.room_code || ""
+        );
+
+        collaboratingRef.current = true;
+        setCollaborating(true);
+
+        const channel =
+          collaborationChannelRef.current;
+
+        if (channel) {
+          await channel.send({
+            type: "broadcast",
+            event: "user-joined",
+            payload: {
+              clientId:
+                clientIdRef.current,
+              pageNumber:
+                pageNumberRef.current,
+              roomCode:
+                room.room_code || "",
+              userId: user.id,
+            },
+          });
+        }
+
+        sessionStorage.removeItem(
+          "pastPaperAutoJoin"
+        );
+        sessionStorage.removeItem(
+          "pastPaperRoomId"
+        );
+      } catch (err) {
+        console.error(
+          "Could not auto-join collaboration room:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Could not join the collaboration room."
+        );
+
+        sessionStorage.removeItem(
+          "pastPaperAutoJoin"
+        );
+      } finally {
+        setRoomLoading(false);
+      }
+    }
+
+    joinAcceptedRoom();
+  }, [
+    paper?.id,
+    collaborationStatus,
+  ]);
 
   /* =========================================================
      PRESENCE

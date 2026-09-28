@@ -1,5 +1,150 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import "./Timetable.css";
+
+const friendTimetableDays = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+];
+
+const friendDayIndexes = {
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+};
+
+const friendDayShortNames = {
+  Monday: "MON",
+  Tuesday: "TUE",
+  Wednesday: "WED",
+  Thursday: "THU",
+  Friday: "FRI",
+};
+
+const friendTimetablePeriods = [
+  {
+    name: "Form",
+    label: "Form",
+    time: "8:30 – 8:45",
+    start: "08:30",
+    end: "08:45",
+  },
+  {
+    name: "L1",
+    label: "L1",
+    time: "8:45 – 9:20",
+    start: "08:45",
+    end: "09:20",
+  },
+  {
+    name: "L2",
+    label: "L2",
+    time: "9:20 – 9:55",
+    start: "09:20",
+    end: "09:55",
+  },
+  {
+    name: "Break 1",
+    label: "Break",
+    time: "9:55 – 10:15",
+    start: "09:55",
+    end: "10:15",
+    break: true,
+  },
+  {
+    name: "L3",
+    label: "L3",
+    time: "10:15 – 10:50",
+    start: "10:15",
+    end: "10:50",
+  },
+  {
+    name: "L4",
+    label: "L4",
+    time: "10:50 – 11:25",
+    start: "10:50",
+    end: "11:25",
+  },
+  {
+    name: "Break 2",
+    label: "Break",
+    time: "11:25 – 11:45",
+    start: "11:25",
+    end: "11:45",
+    break: true,
+  },
+  {
+    name: "L5",
+    label: "L5",
+    time: "11:45 – 12:20",
+    start: "11:45",
+    end: "12:20",
+  },
+  {
+    name: "L6",
+    label: "L6",
+    time: "12:20 – 12:55",
+    start: "12:20",
+    end: "12:55",
+  },
+  {
+    name: "Lunch",
+    label: "Lunch",
+    time: "12:55 – 13:55",
+    start: "12:55",
+    end: "13:55",
+    break: true,
+    lunch: true,
+  },
+  {
+    name: "L7",
+    label: "L7",
+    time: "13:55 – 14:30",
+    start: "13:55",
+    end: "14:30",
+  },
+  {
+    name: "L8",
+    label: "L8",
+    time: "14:30 – 15:05",
+    start: "14:30",
+    end: "15:05",
+  },
+  {
+    name: "L9",
+    label: "L9",
+    time: "15:05 – 15:40",
+    start: "15:05",
+    end: "15:40",
+  },
+  {
+    name: "L10",
+    label: "L10",
+    time: "15:40 – 16:15",
+    start: "15:40",
+    end: "16:15",
+  },
+  {
+    name: "Break 3",
+    label: "Break",
+    time: "16:15 – 16:30",
+    start: "16:15",
+    end: "16:30",
+    break: true,
+  },
+  {
+    name: "Extra-curricular",
+    label: "Extra-curricular",
+    time: "16:30 – 17:25",
+    start: "16:30",
+    end: "17:25",
+  },
+];
 
 function Friends({ setPage }) {
   const [user, setUser] = useState(null);
@@ -29,9 +174,55 @@ function Friends({ setPage }) {
   const [profileTimetable, setProfileTimetable] =
     useState([]);
 
+  const [profileWeek, setProfileWeek] =
+    useState(1);
+
   useEffect(() => {
     loadFriends();
   }, []);
+
+  // =========================================================
+  // REALTIME PAST PAPER INVITATIONS
+  // =========================================================
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    const invitationChannel = supabase
+      .channel(
+        `past-paper-invitations-${user.id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table:
+            "past_paper_invitations",
+          filter:
+            `receiver_id=eq.${user.id}`,
+        },
+        async () => {
+          await loadPaperInvitations(
+            user.id
+          );
+        }
+      )
+      .subscribe((status) => {
+        console.log(
+          "Past paper invitation realtime:",
+          status
+        );
+      });
+
+    return () => {
+      supabase.removeChannel(
+        invitationChannel
+      );
+    };
+  }, [user?.id]);
 
   // =========================================================
   // LOAD FRIENDS PAGE
@@ -301,6 +492,7 @@ function Friends({ setPage }) {
     setProfileLoading(true);
     setProfileSubjects([]);
     setProfileTimetable([]);
+    setProfileWeek(1);
     setMessage("");
 
     try {
@@ -472,15 +664,84 @@ function Friends({ setPage }) {
   }
 
   // =========================================================
-  // GET TIMETABLE FOR DAY
+  // FRIEND TIMETABLE HELPERS
   // =========================================================
 
-  function getTimetableDay(dayNumber) {
-    return profileTimetable.filter(
-      (lesson) =>
-        Number(lesson.day) ===
-        dayNumber
+  function getProfileEntry(
+    day,
+    periodName
+  ) {
+    const dayIndex =
+      friendDayIndexes[day];
+
+    return profileTimetable.find(
+      (entry) =>
+        Number(entry.week) ===
+          Number(profileWeek) &&
+        Number(entry.day) ===
+          dayIndex &&
+        entry.period_name ===
+          periodName
     );
+  }
+
+  function getProfileEntryType(entry) {
+    const value =
+      String(entry?.subject || "")
+        .trim()
+        .toLowerCase();
+
+    if (value.includes("game")) {
+      return "games";
+    }
+
+    if (
+      value.includes(
+        "enrichment"
+      )
+    ) {
+      return "enrichment";
+    }
+
+    if (
+      value.includes("form") ||
+      value.includes("tutor") ||
+      value.includes("chapel") ||
+      value.includes("assembly") ||
+      value.includes("pastoral")
+    ) {
+      return "routine";
+    }
+
+    return "";
+  }
+
+  function getProfileEntryIcon(entry) {
+    const type =
+      getProfileEntryType(entry);
+
+    if (type === "games") {
+      return "🏃";
+    }
+
+    if (
+      type === "enrichment"
+    ) {
+      return "✨";
+    }
+
+    if (type === "routine") {
+      return "🎓";
+    }
+
+    if (
+      entry?.period_name ===
+      "Extra-curricular"
+    ) {
+      return "🌟";
+    }
+
+    return "";
   }
 
   // =========================================================
@@ -769,6 +1030,11 @@ function Friends({ setPage }) {
       sessionStorage.setItem(
         "pastPaperRoomId",
         invitation.room_id || ""
+      );
+
+      sessionStorage.setItem(
+        "pastPaperAutoJoin",
+        "true"
       );
 
       await loadPaperInvitations(
@@ -1264,250 +1530,323 @@ function Friends({ setPage }) {
                 TIMETABLE
                 ================================================= */}
 
-            <div className="revision-section-heading">
+            <div
+              className="revision-section-heading"
+              style={{
+                alignItems: "center",
+                gap: "16px",
+                flexWrap: "wrap",
+              }}
+            >
               <div>
                 <h3>
                   Timetable 🗓️
                 </h3>
 
                 <p>
-                  See this student's
-                  weekly timetable.
+                  View this student's
+                  Week 1 and Week 2 timetable.
                 </p>
+              </div>
+
+              <div className="timetable-week">
+                <button
+                  type="button"
+                  className={
+                    profileWeek === 1
+                      ? "timetable-week-active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setProfileWeek(1)
+                  }
+                >
+                  <span>
+                    WEEK 1
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={
+                    profileWeek === 2
+                      ? "timetable-week-active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setProfileWeek(2)
+                  }
+                >
+                  <span>
+                    WEEK 2
+                  </span>
+                </button>
               </div>
             </div>
 
-            {profileTimetable.length >
-            0 ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection:
-                    "column",
-                  gap: "20px",
-                }}
-              >
-                {timetableDays.map(
-                  (day) => {
-                    const lessons =
-                      getTimetableDay(
-                        day.number
-                      );
+            {profileTimetable.filter(
+              (entry) =>
+                Number(entry.week) ===
+                Number(profileWeek)
+            ).length > 0 ? (
+              <>
+                <div className="timetable-notice">
+                  <div className="timetable-notice-icon">
+                    👥
+                  </div>
 
-                    return (
-                      <div
-                        key={
-                          day.number
-                        }
-                        style={{
-                          background:
-                            "white",
-                          borderRadius:
-                            "18px",
-                          border:
-                            "1px solid #e2e8f0",
-                          overflow:
-                            "hidden",
-                        }}
-                      >
+                  <div>
+                    <strong>
+                      {student.full_name ||
+                        "Student"}'s timetable
+                    </strong>
+
+                    <p>
+                      This timetable is read-only.
+                      You can see the lessons and
+                      activities your friend has
+                      chosen to share.
+                    </p>
+                  </div>
+
+                  <div className="timetable-notice-right">
+                    <span>
+                      WEEK {profileWeek}
+                    </span>
+
+                    <strong>
+                      {
+                        profileTimetable.filter(
+                          (entry) =>
+                            Number(
+                              entry.week
+                            ) ===
+                            Number(
+                              profileWeek
+                            )
+                        ).length
+                      }
+                    </strong>
+
+                    <small>
+                      entries
+                    </small>
+                  </div>
+                </div>
+
+                <div className="timetable-wrapper">
+                  <div className="timetable-grid">
+
+                    <div className="timetable-corner">
+                      <span>
+                        TIME
+                      </span>
+                    </div>
+
+                    {friendTimetableDays.map(
+                      (day) => (
                         <div
+                          key={day}
+                          className="timetable-day"
+                        >
+                          <span className="day-short">
+                            {
+                              friendDayShortNames[
+                                day
+                              ]
+                            }
+                          </span>
+
+                          <strong>
+                            {day}
+                          </strong>
+                        </div>
+                      )
+                    )}
+
+                    {friendTimetablePeriods.map(
+                      (period) => (
+                        <div
+                          key={
+                            period.name +
+                            period.time
+                          }
+                          className="timetable-row"
                           style={{
-                            padding:
-                              "15px 20px",
-                            background:
-                              "#f8fafc",
-                            borderBottom:
-                              "1px solid #e2e8f0",
+                            display:
+                              "contents",
                           }}
                         >
-                          <h3
-                            style={{
-                              margin:
-                                0,
-                            }}
-                          >
-                            {day.name}
-                          </h3>
-                        </div>
-
-                        {lessons.length >
-                        0 ? (
                           <div
-                            style={{
-                              padding:
-                                "15px",
-                              display:
-                                "flex",
-                              flexDirection:
-                                "column",
-                              gap:
-                                "10px",
-                            }}
+                            className={
+                              period.break
+                                ? "timetable-time timetable-time-break"
+                                : "timetable-time"
+                            }
                           >
-                            {lessons.map(
-                              (
-                                lesson
-                              ) => (
+                            <strong>
+                              {period.label ||
+                                period.name}
+                            </strong>
+
+                            <span>
+                              {period.time}
+                            </span>
+                          </div>
+
+                          {friendTimetableDays.map(
+                            (day) => {
+                              const entry =
+                                getProfileEntry(
+                                  day,
+                                  period.name
+                                );
+
+                              const special =
+                                entry
+                                  ? getProfileEntryType(
+                                      entry
+                                    )
+                                  : "";
+
+                              return (
                                 <div
-                                  key={
-                                    lesson.id
-                                  }
+                                  key={`${day}-${period.name}`}
+                                  className={[
+                                    "timetable-cell",
+
+                                    period.break
+                                      ? "timetable-cell-break"
+                                      : "",
+
+                                    entry
+                                      ? "timetable-cell-filled"
+                                      : "",
+
+                                    special
+                                      ? `timetable-cell-${special}`
+                                      : "",
+                                  ]
+                                    .filter(
+                                      Boolean
+                                    )
+                                    .join(
+                                      " "
+                                    )}
                                   style={{
-                                    display:
-                                      "flex",
-                                    alignItems:
-                                      "center",
-                                    gap:
-                                      "15px",
-                                    padding:
-                                      "14px",
-                                    borderRadius:
-                                      "12px",
-                                    background:
-                                      "#f8fafc",
-                                    flexWrap:
-                                      "wrap",
+                                    cursor:
+                                      "default",
                                   }}
                                 >
-                                  <div
-                                    style={{
-                                      minWidth:
-                                        "110px",
-                                      fontWeight:
-                                        "600",
-                                      color:
-                                        "#4f46e5",
-                                      fontSize:
-                                        "13px",
-                                    }}
-                                  >
-                                    {formatTime(
-                                      lesson.start_time
-                                    )}
-
-                                    {lesson.end_time && (
-                                      <span>
-                                        {" - "}
-                                        {formatTime(
-                                          lesson.end_time
-                                        )}
+                                  {period.break ? (
+                                    <div className="break-content">
+                                      <span className="break-icon">
+                                        {period.lunch
+                                          ? "🍴"
+                                          : "☕"}
                                       </span>
-                                    )}
-                                  </div>
 
-                                  <div
-                                    style={{
-                                      flex:
-                                        1,
-                                      minWidth:
-                                        "180px",
-                                    }}
-                                  >
-                                    <strong>
-                                      {lesson.subject ||
-                                        "Lesson"}
-                                    </strong>
-
-                                    {lesson.period_name && (
-                                      <div
-                                        style={{
-                                          fontSize:
-                                            "13px",
-                                          color:
-                                            "#64748b",
-                                          marginTop:
-                                            "3px",
-                                        }}
-                                      >
-                                        {lesson.period_name}
-                                      </div>
-                                    )}
-
-                                    {(lesson.teacher ||
-                                      lesson.room) && (
-                                      <div
-                                        style={{
-                                          fontSize:
-                                            "13px",
-                                          color:
-                                            "#64748b",
-                                          marginTop:
-                                            "5px",
-                                        }}
-                                      >
-                                        {lesson.teacher && (
+                                      <span>
+                                        {period.label ||
+                                          period.name}
+                                      </span>
+                                    </div>
+                                  ) : entry ? (
+                                    <div className="lesson-content">
+                                      <div className="lesson-subject">
+                                        {getProfileEntryIcon(
+                                          entry
+                                        ) && (
                                           <span>
-                                            👨‍🏫{" "}
-                                            {
-                                              lesson.teacher
-                                            }
+                                            {getProfileEntryIcon(
+                                              entry
+                                            )}{" "}
                                           </span>
                                         )}
 
-                                        {lesson.teacher &&
-                                          lesson.room && (
-                                            <span>
-                                              {" • "}
-                                            </span>
-                                          )}
-
-                                        {lesson.room && (
-                                          <span>
-                                            📍{" "}
-                                            {
-                                              lesson.room
-                                            }
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {lesson.week && (
-                                      <div
-                                        style={{
-                                          fontSize:
-                                            "12px",
-                                          color:
-                                            "#94a3b8",
-                                          marginTop:
-                                            "5px",
-                                        }}
-                                      >
-                                        Week{" "}
                                         {
-                                          lesson.week
+                                          entry.subject
                                         }
                                       </div>
-                                    )}
-                                  </div>
+
+                                      {entry.teacher && (
+                                        <div className="lesson-detail">
+                                          <span>
+                                            👤
+                                          </span>
+
+                                          {
+                                            entry.teacher
+                                          }
+                                        </div>
+                                      )}
+
+                                      {entry.room && (
+                                        <div className="lesson-detail">
+                                          <span>
+                                            📍
+                                          </span>
+
+                                          {
+                                            entry.room
+                                          }
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div
+                                      className="empty-slot"
+                                      style={{
+                                        opacity:
+                                          0.45,
+                                      }}
+                                    >
+                                      <span>
+                                        —
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
-                              )
-                            )}
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              padding:
-                                "18px",
-                              color:
-                                "#94a3b8",
-                              fontSize:
-                                "14px",
-                            }}
-                          >
-                            No lessons scheduled.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                )}
-              </div>
+                              );
+                            }
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div className="timetable-legend">
+                  <div className="legend-title">
+                    KEY
+                  </div>
+
+                  <div className="legend-item">
+                    <span className="legend-dot lesson-dot" />
+                    Lesson / activity
+                  </div>
+
+                  <div className="legend-item">
+                    <span className="legend-dot games-dot" />
+                    Games
+                  </div>
+
+                  <div className="legend-item">
+                    <span className="legend-dot enrichment-dot" />
+                    Enrichment
+                  </div>
+
+                  <div className="legend-item">
+                    <span className="legend-dot routine-dot" />
+                    Form / school routine
+                  </div>
+                </div>
+              </>
             ) : (
               <div
                 style={{
-                  padding: "25px",
-                  borderRadius: "16px",
+                  padding: "30px",
+                  borderRadius: "18px",
                   background:
                     "#f8fafc",
                   color:
@@ -1519,22 +1858,22 @@ function Friends({ setPage }) {
                 <div
                   style={{
                     fontSize:
-                      "30px",
+                      "38px",
                     marginBottom:
-                      "8px",
+                      "10px",
                   }}
                 >
                   🗓️
                 </div>
 
                 <strong>
-                  No timetable available
+                  No Week {profileWeek} timetable available
                 </strong>
 
                 <p>
-                  This student has
-                  not added their
-                  timetable yet.
+                  This student has not added
+                  any entries for Week{" "}
+                  {profileWeek} yet.
                 </p>
               </div>
             )}
@@ -1568,7 +1907,7 @@ function Friends({ setPage }) {
       <div className="revision-header">
         <div>
           <p className="card-eyebrow">
-            MONMOUTH SIXTH FORM
+            TRISTAN REVISION
           </p>
 
           <h2>
@@ -2074,8 +2413,8 @@ function Friends({ setPage }) {
           </h3>
 
           <p>
-            Find other students at
-            Monmouth Sixth Form.
+            Find other students using
+            the revision app.
           </p>
         </div>
       </div>

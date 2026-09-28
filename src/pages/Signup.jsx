@@ -1,17 +1,34 @@
-import React, { useState } from "react";
+import React, {
+  useState,
+} from "react";
+
 import { supabase } from "../lib/supabase";
 
 function Signup({ setPage }) {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [yearGroup, setYearGroup] = useState("Year 12");
+  const [fullName, setFullName] =
+    useState("");
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] =
+    useState("");
 
-  const handleSignup = async (event) => {
+  const [password, setPassword] =
+    useState("");
+
+  const [yearGroup, setYearGroup] =
+    useState("Year 12");
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const handleSignup = async (
+    event
+  ) => {
     event.preventDefault();
 
     setError("");
@@ -20,11 +37,15 @@ function Signup({ setPage }) {
 
     try {
       if (!fullName.trim()) {
-        throw new Error("Please enter your full name.");
+        throw new Error(
+          "Please enter your full name."
+        );
       }
 
       if (!email.trim()) {
-        throw new Error("Please enter your school email.");
+        throw new Error(
+          "Please enter your email."
+        );
       }
 
       if (password.length < 6) {
@@ -45,8 +66,10 @@ function Signup({ setPage }) {
         password: password,
         options: {
           data: {
-            full_name: fullName.trim(),
-            year_group: yearGroup,
+            full_name:
+              fullName.trim(),
+            year_group:
+              yearGroup,
           },
         },
       });
@@ -56,9 +79,10 @@ function Signup({ setPage }) {
       }
 
       /*
-       * Supabase may return a user without
-       * creating an active session when
-       * email confirmation is enabled.
+       * Supabase may return a user
+       * without creating an active
+       * session when email
+       * confirmation is enabled.
        */
 
       if (!data?.user) {
@@ -70,10 +94,8 @@ function Signup({ setPage }) {
       /*
        * CREATE PROFILE
        *
-       * This only runs if we have an active
-       * session. If email confirmation is
-       * required, the profile can be created
-       * after the user confirms their email.
+       * This only runs if we have
+       * an active session.
        */
 
       if (data.session) {
@@ -83,9 +105,12 @@ function Signup({ setPage }) {
           .from("profiles")
           .upsert({
             id: data.user.id,
-            full_name: fullName.trim(),
-            school_email: email.trim(),
-            year_group: yearGroup,
+            full_name:
+              fullName.trim(),
+            school_email:
+              email.trim(),
+            year_group:
+              yearGroup,
           });
 
         if (profileError) {
@@ -97,7 +122,7 @@ function Signup({ setPage }) {
       }
 
       /*
-       * SHOW CORRECT SUCCESS MESSAGE
+       * SHOW SUCCESS MESSAGE
        */
 
       setSuccess(
@@ -105,7 +130,10 @@ function Signup({ setPage }) {
       );
 
     } catch (err) {
-      console.error("Signup error:", err);
+      console.error(
+        "Signup error:",
+        err
+      );
 
       setError(
         err?.message ||
@@ -126,30 +154,30 @@ function Signup({ setPage }) {
         <button
           type="button"
           className="back-button"
-          onClick={() => setPage("login")}
+          onClick={() =>
+            setPage("login")
+          }
         >
           ← Back to login
         </button>
-
 
         {/* LOGO */}
 
         <div className="auth-logo">
 
           <img
-            src="/monmouth-logo.webp"
-            alt="Monmouth Sixth Form logo"
+            src="/tristan-revision-logo.png"
+            alt="Tristan Sixth Form Revision App logo"
           />
 
         </div>
-
 
         {/* HEADING */}
 
         <div className="auth-heading">
 
           <h1>
-            Monmouth Sixth Form
+            Tristan Sixth Form
           </h1>
 
           <h2>
@@ -161,12 +189,11 @@ function Signup({ setPage }) {
           </p>
 
           <span>
-            Join the Monmouth Sixth Form
+            Join the Tristan Sixth Form
             Revision App.
           </span>
 
         </div>
-
 
         {/* SIGNUP FORM */}
 
@@ -185,7 +212,9 @@ function Signup({ setPage }) {
               type="text"
               value={fullName}
               onChange={(event) =>
-                setFullName(event.target.value)
+                setFullName(
+                  event.target.value
+                )
               }
               placeholder="Your full name"
               required
@@ -193,25 +222,25 @@ function Signup({ setPage }) {
 
           </label>
 
-
           {/* EMAIL */}
 
           <label>
 
-            School email
+            Email
 
             <input
               type="email"
               value={email}
               onChange={(event) =>
-                setEmail(event.target.value)
+                setEmail(
+                  event.target.value
+                )
               }
-              placeholder="your.name@..."
+              placeholder="your.name@example.com"
               required
             />
 
           </label>
-
 
           {/* PASSWORD */}
 
@@ -223,7 +252,9 @@ function Signup({ setPage }) {
               type="password"
               value={password}
               onChange={(event) =>
-                setPassword(event.target.value)
+                setPassword(
+                  event.target.value
+                )
               }
               placeholder="Create a password"
               minLength={6}
@@ -231,7 +262,6 @@ function Signup({ setPage }) {
             />
 
           </label>
-
 
           {/* YEAR GROUP */}
 
@@ -242,7 +272,9 @@ function Signup({ setPage }) {
             <select
               value={yearGroup}
               onChange={(event) =>
-                setYearGroup(event.target.value)
+                setYearGroup(
+                  event.target.value
+                )
               }
             >
 
@@ -258,7 +290,6 @@ function Signup({ setPage }) {
 
           </label>
 
-
           {/* ERROR */}
 
           {error && (
@@ -267,7 +298,6 @@ function Signup({ setPage }) {
             </div>
           )}
 
-
           {/* SUCCESS */}
 
           {success && (
@@ -275,7 +305,6 @@ function Signup({ setPage }) {
               {success}
             </div>
           )}
-
 
           {/* SUBMIT */}
 
@@ -293,7 +322,6 @@ function Signup({ setPage }) {
 
         </form>
 
-
         {/* FOOTER */}
 
         <div className="auth-footer">
@@ -304,7 +332,9 @@ function Signup({ setPage }) {
 
           <button
             type="button"
-            onClick={() => setPage("login")}
+            onClick={() =>
+              setPage("login")
+            }
           >
             Log in
           </button>

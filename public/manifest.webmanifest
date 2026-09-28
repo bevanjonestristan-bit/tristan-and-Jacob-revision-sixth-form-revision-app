@@ -1,0 +1,25 @@
+{
+  "name": "Tristan Sixth Form Revision App",
+  "short_name": "Tristan Revision",
+  "description": "A sixth form revision app for revision, study rooms, past papers, flashcards, timetables and collaborative study.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e40af",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

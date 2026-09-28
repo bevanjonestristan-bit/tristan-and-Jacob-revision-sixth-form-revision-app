@@ -3,9 +3,12 @@ import { supabase } from "../lib/supabase";
 
 function Login({ setPage }) {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [password, setPassword] =
+    useState("");
+  const [loading, setLoading] =
+    useState(false);
+  const [message, setMessage] =
+    useState("");
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -14,10 +17,13 @@ function Login({ setPage }) {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error } =
+        await supabase.auth.signInWithPassword(
+          {
+            email,
+            password,
+          }
+        );
 
       if (error) {
         throw error;
@@ -25,10 +31,14 @@ function Login({ setPage }) {
 
       setPage("home");
     } catch (err) {
-      console.error("Login error:", err);
+      console.error(
+        "Login error:",
+        err
+      );
 
       setMessage(
-        err.message || "Unable to log in. Please check your details."
+        err.message ||
+          "Unable to log in. Please check your details."
       );
     } finally {
       setLoading(false);
@@ -49,23 +59,22 @@ function Login({ setPage }) {
 
           <div className="school-crest">
             <img
-              src="/monmouth-logo.webp.webp"
-              alt="Haberdashers' Monmouth School logo"
+              src="/tristan-revision-logo.png"
+              alt="Tristan Sixth Form Revision App logo"
             />
           </div>
 
           <div className="school-brand-text">
             <strong>
-              Haberdashers' Monmouth
+              Tristan
             </strong>
 
             <span>
-              Sixth Form
+              Sixth Form Revision
             </span>
           </div>
 
         </div>
-
 
         {/* HEADING */}
 
@@ -80,11 +89,11 @@ function Login({ setPage }) {
           </h1>
 
           <p>
-            Log in to continue your revision journey.
+            Log in to continue your
+            revision journey.
           </p>
 
         </div>
-
 
         {/* FORM */}
 
@@ -96,23 +105,24 @@ function Login({ setPage }) {
           <div className="auth-field">
 
             <label htmlFor="login-email">
-              School email
+              Email
             </label>
 
             <input
               id="login-email"
               type="email"
-              placeholder="Enter your school email"
+              placeholder="Enter your email"
               value={email}
               onChange={(event) =>
-                setEmail(event.target.value)
+                setEmail(
+                  event.target.value
+                )
               }
               autoComplete="email"
               required
             />
 
           </div>
-
 
           <div className="auth-field">
 
@@ -126,7 +136,9 @@ function Login({ setPage }) {
               placeholder="Enter your password"
               value={password}
               onChange={(event) =>
-                setPassword(event.target.value)
+                setPassword(
+                  event.target.value
+                )
               }
               autoComplete="current-password"
               required
@@ -134,24 +146,23 @@ function Login({ setPage }) {
 
           </div>
 
-
           {message && (
             <div className="auth-message">
               {message}
             </div>
           )}
 
-
           <button
             type="submit"
             className="auth-submit"
             disabled={loading}
           >
-            {loading ? "Logging in..." : "Log in"}
+            {loading
+              ? "Logging in..."
+              : "Log in"}
           </button>
 
         </form>
-
 
         {/* FOOTER */}
 
@@ -163,7 +174,9 @@ function Login({ setPage }) {
 
           <button
             type="button"
-            onClick={() => setPage("signup")}
+            onClick={() =>
+              setPage("signup")
+            }
           >
             Create an account
           </button>
